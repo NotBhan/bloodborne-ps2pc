@@ -1,11 +1,28 @@
 # Changelog
 
 Windows releases of this fork, newest first. Each is on the
-[releases page](https://github.com/Jgamrot/bloodborne_pc/releases) as `bbport-windows.zip`.
+[NotBhan release page](https://github.com/NotBhan/bloodborne_pc_notbhan/releases) as
+`bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
-## Unreleased
+## 1.9.7 fork.1 (2026-10-21)
 
+The first release from the merged Linux/Windows tree. It includes the Windows launcher
+rework below plus the shared renderer, motion-vector, cache and shader pre-build fixes.
+
+- **Recorder stability:** deferred Vulkan recorder work now runs on the owning thread,
+  recorder-mode flags are atomic, and chunk mutation is serialized. This targets the
+  long-session `libvulkan_radeon` SIGSEGV on `bb:VkRecorder`.
+- **Object motion:** the in-game PC menu and `bbport.ini` can opt in on AMD RDNA 2; restart
+  to apply. Hard initialization failures still refuse it.
+- **Camera motion vectors:** points behind the previous camera are treated as disoccluded,
+  reprojection is bounded, and NaN/Inf is filtered.
+- **Texture cache:** memory-property queries are no longer issued twice per guest submission,
+  and LRU checks are throttled.
+- **Pipeline cache:** diagnostics plus 10-minute eviction of unused `VkPipeline` objects
+  (`BB_PIPELINE_GC_MINUTES`; `0` disables).
+- **Shader pre-build:** shader code is extracted from the game files before boot and reused
+  through a stamp; `BB_SHADER_PREBUILD=0` disables it.
 - **Windows launcher rework:** a persistent named rail now separates Overview, Graphics,
   Display, Game & saves, Mods & patches, Online, System and Diagnostics. All existing
   settings, mod/patch controls, co-op/sign-in actions and setup steps remain available.
@@ -16,6 +33,9 @@ Planned work is in [ROADMAP.md](ROADMAP.md).
   toggle. Native Windows keeps Direct3D 11.
 - **Regression coverage:** page/section mapping tests and updated Wine smoke-test
   documentation; the existing launcher settings, renderer and packaging tests still pass; the full suite is 321 tests with the same two known host-only errors and 77 skips as the baseline.
+- **Documentation:** the Windows README, launcher reference and this changelog now link the
+  1.9.7 fork.1 release and describe the shared Linux/Windows launcher relationship. The
+  release package carries these documents under `docs/`.
 
 ## 1.9.7
 

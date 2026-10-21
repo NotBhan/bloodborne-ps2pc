@@ -6,8 +6,17 @@ stops the game process, and exposes diagnostics. The classic Tk fallback remains
 when Qt Quick cannot start.
 
 The launcher UI was reworked around a single persistent navigation rail. The Windows
-backend, settings keys, executable, packaging toolchain, and Windows process model are
-unchanged.
+backend, settings keys, executable, packaging toolchain, and Windows process model remain
+compatible with the existing Windows build.
+
+## Release 1.9.7 fork.1
+
+Download [bbport-windows.zip](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/download/v1.9.7-fork.1/bbport-windows.zip)
+from the [release page](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/tag/v1.9.7-fork.1).
+This build includes the recorder stability fix, object-motion opt-in on AMD RDNA 2, the
+camera motion-vector clamp, throttled texture GC, 10-minute pipeline-cache eviction and the
+shader pre-build. See [CHANGELOG.md](CHANGELOG.md) and the
+[project README](../README.md).
 
 ## Relationship to the Linux launcher
 

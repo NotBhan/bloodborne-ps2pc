@@ -129,6 +129,7 @@ mkdir -p "$dest/tools" && cp tools/legacy-cpu-plan.json "$dest/tools/"
 cp run.py LICENSE README.md packaging/windows/README-Windows.txt "$dest/"
 mkdir -p "$dest/docs"
 cp -r docs/images "$dest/docs/"
+cp docs/WINDOWS_LAUNCHER.md docs/CHANGELOG.md docs/WINE_LAUNCHER_RENDERING.md docs/ROADMAP.md "$dest/docs/"
 if [[ -d fsr4_shaders ]]; then cp -r fsr4_shaders "$dest/"; fi
 # Shader pre-build catalog (scripts/shader_catalog.py): records only, no game code or SPIR-V.
 if [[ -d shader_catalog ]]; then cp -r shader_catalog "$dest/"; fi
