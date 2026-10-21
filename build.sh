@@ -2,14 +2,14 @@
 set -euo pipefail
 cd -- "$(dirname -- "$0")"
 mkdir -p out
-# Windows: MSYS2 CLANG64 (packages in packaging/windows/README.md). The GPU library is static
+# Windows: MSYS2 CLANG64. The GPU library is static
 # there and CMake links bb-probe.exe as well; no PGO (GCC-only flags), LTO off by default.
 case $(uname -s) in
 MINGW*|MSYS*)
     # shellcheck source=msys2-env.sh
     source ./msys2-env.sh
     for tool in clang cmake ninja pkg-config; do
-        command -v "$tool" >/dev/null || { echo "Need $tool from MSYS2 CLANG64 (packaging/windows/README.md)." >&2; exit 1; }
+        command -v "$tool" >/dev/null || { echo "Need $tool from MSYS2 CLANG64." >&2; exit 1; }
     done
     if [[ ! -f gpu/third_party/fsr-vulkan/CMakeLists.txt || ! -f gpu/third_party/imgui/imgui.h ||
           ! -f gpu/third_party/xbyak/xbyak/xbyak.h ]]; then
@@ -79,7 +79,7 @@ if ! ninja -C out/gpu bbgpu > out/gpu-build.log 2>&1; then
 fi
 # $ORIGIN/gpu: packaged copies keep the library next to the binary without patching it.
 gpu=(-Lout/gpu -lbbgpu -Wl,-rpath,'$ORIGIN/gpu' -Wl,-rpath,"$PWD/out/gpu" -rdynamic)
-runtime=(src/runtime*.c)
+runtime=(src/runtime*.c src/engine_hooks.c src/engine_features.c src/pc_menu.c src/rebirth.c src/input_bindings.c src/mouse_camera.c src/key_prompts.c src/menu_pointer.c)
 # Third-party decoders: compiled once, without this project's -Werror policy.
 atrac9=(third_party/LibAtrac9/C/src/*.c)
 if [[ ! -f out/libatrac9.a || -n $(find third_party/LibAtrac9/C/src -newer out/libatrac9.a -name '*.c') ]]; then
@@ -115,4 +115,6 @@ if [[ ${1:-} == --test ]]; then
     out/engine-hooks-test
     ninja -C out/gpu frame-limiter-test
     out/gpu/frame-limiter-test
+    ninja -C out/gpu upscaler-support-test
+    out/gpu/upscaler-support-test
 fi

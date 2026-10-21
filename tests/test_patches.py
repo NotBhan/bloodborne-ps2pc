@@ -1,4 +1,5 @@
 from paths import ROOT
+import os
 import struct
 import tempfile
 import unittest
@@ -6,13 +7,14 @@ from unittest import mock
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import patches
 from patches import (EBOOT_BASE, FIXES, FPS_PRESETS, OUTPUT_SIZE, RESOLUTION_TEMPLATE, SCENE_HEIGHT,
                      SCENE_WIDTH, UI_HEIGHT, UI_WIDTH, compile_patches,
                      render_size, resolution_writes, scaled_sizes, output_size, effect_patches,
                      validate_patch_requirements, external_patches, external_selection,
                      compile_external, frame_rate_fixes, sprint_fix_enabled, eboot_bytes,
                      eboot_matches_patches, patch_fingerprint, patch_sites, game_app_version,
-                     eboot_is_109)
+                     eboot_is_109, ui_resolution)
 
 XML = ROOT / 'patches/Bloodborne.xml'
 SEGMENTS = [(0, 0x6000000)]
@@ -26,6 +28,37 @@ def immediate(writes, address):
             data[offset-address:offset-address+len(value)] = value
     assert data[5:] == b'\x0f\x1f\x40\x00'
     return data[0], struct.unpack_from('<I', data, 1)[0]
+
+
+class UiResolutionTests(unittest.TestCase):
+    def resolve(self, output, clean=True, force=False, override=''):
+        environment = {'BB_FORCE_PATCHES': '1'} if force else {}
+        with mock.patch.object(patches, 'game_app_version', return_value='01.09' if clean else '01.00'), \
+                mock.patch.object(patches, 'eboot_is_109', return_value=clean), \
+                mock.patch.dict(os.environ, environment, clear=False):
+            if not force:
+                os.environ.pop('BB_FORCE_PATCHES', None)
+            return ui_resolution({'output_res': output}, override, ROOT / 'CUSA03173')
+
+    def test_1080p_needs_no_ui_override_or_hud_layer(self):
+        self.assertIsNone(self.resolve('1920x1080'))
+        self.assertIsNone(self.resolve('1280x720'))
+
+    def test_16_10_uses_the_output_size_without_a_hud_layer(self):
+        self.assertEqual(self.resolve('1280x800'), (0, (1280, 800)))
+
+    def test_clean_ultrawide_uses_the_widened_hud_canvas(self):
+        for output, canvas in (('2560x1080', (2560, 1080)), ('3440x1440', (2580, 1080)),
+                               ('5120x1440', (3840, 1080))):
+            with self.subTest(output=output):
+                self.assertEqual(self.resolve(output), (canvas[0], canvas))
+
+    def test_other_builds_keep_a_centred_ui_unless_forced(self):
+        self.assertEqual(self.resolve('3440x1440', clean=False), (0, (3440, 1440)))
+        self.assertEqual(self.resolve('3440x1440', clean=False, force=True), (2580, (2580, 1080)))
+
+    def test_output_override_wins_over_the_settings(self):
+        self.assertEqual(self.resolve('1920x1080', override='3440x1440'), (2580, (2580, 1080)))
 
 
 class NativeUiTests(unittest.TestCase):
@@ -164,6 +197,39 @@ class SprintFixTests(unittest.TestCase):
             self.assertFalse(sprint_fix_enabled({'sprint_fix': '0'}))
         with mock.patch.dict('os.environ', {'BB_SPRINT_FIX': '0'}):
             self.assertFalse(sprint_fix_enabled({'sprint_fix': '1'}))
+
+
+class EffectPatchTests(unittest.TestCase):
+    EFFECTS_OFF = {
+        'effect_chromatic_aberration': '0', 'effect_dof': '0', 'effect_motion_blur': '0',
+        'effect_ssao': '0', 'effect_game_aa': '0', 'effect_dynamic_shadows': '0',
+    }
+
+    def test_disabled_effects_select_the_constructor_flag_patches(self):
+        names = effect_patches(self.EFFECTS_OFF)
+        expected = {
+            'Disable Dynamic Light Shadows (perf increase)': (0x026C2538 - EBOOT_BASE, b'\x00'),
+            'Disable SSAO': (0x026C2548 - EBOOT_BASE, b'\x00'),
+            'Disable Motion Blur (perf increase)': (0x026C2549 - EBOOT_BASE, b'\x00'),
+            'Disable AA': (0x026C254A - EBOOT_BASE, b'\x00'),
+            'Disable DoF': (0x025D7BBC - EBOOT_BASE, bytes.fromhex('E9DF00000090')),
+            'Disable Chromatic Aberration': (
+                0x0269FAA8 - EBOOT_BASE, bytes.fromhex('c783ac000000000000009090')),
+        }
+        for name, write in expected.items():
+            self.assertIn(name, names)
+            self.assertEqual(compile_patches(XML, [name], '01.09', SEGMENTS), [write])
+        # The effect flags share one constructor: the bytes must not overlap each other.
+        offsets = [offset for offset, _ in expected.values()]
+        self.assertEqual(len(offsets), len(set(offsets)))
+
+    def test_enabled_effects_do_not_select_the_disable_patches(self):
+        settings = {key: '1' for key in self.EFFECTS_OFF}
+        names = effect_patches(settings)
+        for name in ('Disable Dynamic Light Shadows (perf increase)', 'Disable SSAO',
+                     'Disable Motion Blur (perf increase)', 'Disable AA', 'Disable DoF',
+                     'Disable Chromatic Aberration'):
+            self.assertNotIn(name, names)
 
 
 class DebugPatchTests(unittest.TestCase):

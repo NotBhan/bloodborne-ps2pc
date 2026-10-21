@@ -11,29 +11,10 @@
 #include <fstream>
 #include <iterator>
 #include <string>
-#ifdef _WIN32
-#include <stdlib.h>
-#endif
 
 extern "C" int bbgpu_setting_get(const char* key, int* value);
 
 namespace {
-
-#ifdef _WIN32
-int SetEnv(const char* name, const char* value) {
-    return _putenv_s(name, value);
-}
-int UnsetEnv(const char* name) {
-    return _putenv_s(name, "");
-}
-#else
-int SetEnv(const char* name, const char* value) {
-    return setenv(name, value, 1);
-}
-int UnsetEnv(const char* name) {
-    return unsetenv(name);
-}
-#endif
 
 void WriteIni(const std::filesystem::path& path, const char* object_motion) {
     std::ofstream file(path, std::ios::trunc);
@@ -52,12 +33,12 @@ int ReadSetting(const char* key) {
 int main() {
     using namespace BbSettings;
 
-    UnsetEnv("BB_OBJECT_MOTION");
+    unsetenv("BB_OBJECT_MOTION");
     const auto dir = std::filesystem::temp_directory_path() / "bbport-settings-test";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
     const auto ini = dir / "bbport.ini";
-    SetEnv("BB_CONFIG", ini.string().c_str());
+    setenv("BB_CONFIG", ini.c_str(), 1);
 
     // Supported: the file's value is honoured.
     ConfigureObjectMotionSupport(true, nullptr);
