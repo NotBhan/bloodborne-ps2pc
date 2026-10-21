@@ -9,6 +9,16 @@ and the [shadPS4](https://github.com/shadps4-emu/shadPS4) renderer.
 > **No game files are included.** You need your own dump of Bloodborne. This project is not
 > affiliated with Sony Interactive Entertainment or FromSoftware.
 
+## Relationship to the Linux launcher
+
+The Linux branch of this project carries a native GTK4/libadwaita launcher. It began as the
+port's barebones Linux launcher and was refined over the later Linux changes to match this
+Windows launcher's feature set: the same pages and settings, internal-resolution controls,
+upscalers (FSR 3.1/FSR 4/DLSS), mods and patches, Hunter's Dream sign-in and co-op setup,
+diagnostics, and restart supervision. The Windows launcher was not purged or replaced: it
+remains the Windows control surface here, and both launchers share the renderer, `bbport.ini`
+settings keys, and preparation scripts.
+
 ![The launcher overview](docs/images/launcher-overview.jpg)
 
 ## Download

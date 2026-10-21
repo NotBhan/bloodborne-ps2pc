@@ -9,6 +9,15 @@ The launcher UI was reworked around a single persistent navigation rail. The Win
 backend, settings keys, executable, packaging toolchain, and Windows process model are
 unchanged.
 
+## Relationship to the Linux launcher
+
+The Linux branch carries a native GTK4/libadwaita launcher. It was built out from the port's
+barebones Linux launcher over the later Linux changes and reached feature parity with this
+Windows launcher: pages and settings, graphics/upscaler controls, internal-resolution scaling,
+mods and patches, the Hunter's Dream account flow, diagnostics, and restart supervision. The
+Windows launcher remains maintained here; neither launcher replaces the other, and both share
+the renderer, `bbport.ini` settings keys, and preparation scripts.
+
 ![Overview](images/launcher-overview.jpg)
 
 ## Status labels used in this document
