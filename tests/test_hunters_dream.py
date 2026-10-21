@@ -18,7 +18,7 @@ def load(name, path):
 
 run = load('bb_run', 'run.py')
 sys.path.insert(0, str(ROOT / 'launcher'))
-launcher = load('bb_launcher', 'launcher/bbport_launcher_win.py')
+launcher = load('bb_launcher', 'launcher/bbport_net.py')
 import bbport_coop as coop
 
 
@@ -98,7 +98,7 @@ class HuntersDreamTests(unittest.TestCase):
     def test_https_trusts_the_shipped_roots_and_explains_certificate_errors(self):
         # Issue #13: CERTIFICATE_VERIFY_FAILED on a PC whose Windows store lacks the roots.
         import certifi
-        with open(certifi.where(), encoding='ascii') as bundle:
+        with open(certifi.where(), encoding='utf-8') as bundle:
             shipped = bundle.read().count('BEGIN CERTIFICATE')
         context = launcher.https_context()
         self.assertGreaterEqual(context.cert_store_stats()['x509_ca'], shipped)
@@ -106,12 +106,23 @@ class HuntersDreamTests(unittest.TestCase):
         self.assertIn('date and time', text)
         self.assertEqual(launcher.connection_error_text(OSError('timed out')), 'timed out')
 
+    def test_certifi_bundle_binary_text_boundary(self):
+        import certifi
+        # Verify bundle contains certificates and can be decoded as UTF-8 / read as bytes
+        raw_bytes = Path(certifi.where()).read_bytes()
+        self.assertIn(b'BEGIN CERTIFICATE', raw_bytes)
+        text = raw_bytes.decode('utf-8')
+        self.assertIn('BEGIN CERTIFICATE', text)
+        # Ensure https_context loads without throwing encoding/SSL errors
+        context = launcher.https_context()
+        self.assertGreater(context.cert_store_stats()['x509_ca'], 0)
+
     def test_pool_is_shown_unless_switched_off(self):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop('BB_HUNTERS_DREAM', None)
-            shown = load('bb_launcher_shown', 'launcher/bbport_launcher_win.py')
+            shown = load('bb_launcher_shown', 'launcher/bbport_net.py')
         with mock.patch.dict(os.environ, {'BB_HUNTERS_DREAM': '0'}):
-            hidden = load('bb_launcher_hidden', 'launcher/bbport_launcher_win.py')
+            hidden = load('bb_launcher_hidden', 'launcher/bbport_net.py')
         self.assertTrue(shown.HUNTERS_DREAM_POOL)
         self.assertFalse(hidden.HUNTERS_DREAM_POOL)
 
