@@ -600,12 +600,14 @@ FSR 4 requires neural-network INT8 matrix/dot-product acceleration and compute s
   - `gpu/shadps4/video_core/renderer_vulkan/vk_temporal_upscaler.cpp`: Wrapped target transitions inside `if (!reduced)` to completely bypass native resolves during upscaled rendering; converted image barriers to `eComputeShader`; replaced `WaitSubmitted()` with `scheduler.DeferOperation()`.
   - `gpu/shadps4/video_core/renderer_vulkan/vk_scene_resolution.cpp`: Removed depth rejection from `ProxyCurrent()` and added `vk::ImageLayout::eDepthStencilReadOnlyOptimal` transitions in `PrepareSample()`.
 
-### 15.2 Windows Launcher & Packaging Purge
-- **Components Safely Removed**:
-  - Windows launcher UI: `launcher/bbport_launcher_win.py`, `launcher/bbport_launcher_qml.py`, `launcher/bbport_launcher_backend.py`, `launcher/qml/`.
-  - Windows packaging & manifests: `packaging/windows/` (including `bb-probe.manifest`, `.rc` files, `package.sh`, `play.c`).
-  - Windows translation files: `launcher/bbport_lang.py`, `launcher/bbport_lang_more.py`.
-  - Obsolete Windows-only tests: `test_setup_wizard.py`, `test_settings_navigation.py`, `test_launcher_updates.py`, `test_launcher_output.py`, `test_graphics_presets.py`.
+### 15.2 Linux Launcher Refinement & Packaging Split
+- **Refined from the barebones Linux launcher**:
+  - The port's minimal GTK launcher was developed into the full GTK4/libadwaita launcher: Overview, Graphics, Display, Game & saves, Mods & patches, Online, System, Diagnostics and Setup.
+  - Feature parity with the Windows launcher was reached incrementally: graphics presets and FSR 3.1/FSR 4/DLSS selection, internal-resolution scaling, mods/patches, Hunter's Dream sign-in and co-op setup, diagnostics, restart supervision, and desktop integration.
+- **Windows launcher retained (not purged)**:
+  - The Windows launcher UI and packaging remain maintained in the Windows tree/branch: `launcher/bbport_launcher_win.py`, `launcher/bbport_launcher_qml.py`, `launcher/bbport_launcher_backend.py`, `launcher/qml/`, and `packaging/windows/`.
+  - The two launchers share the renderer, `bbport.ini` settings keys, and preparation scripts; this Linux branch simply carries the Linux launcher and Linux packaging.
+  - Windows-only translation files and tests stay with the Windows launcher; the Linux launcher uses the six-language `launcher/bbport_i18n.py` catalog.
 - **Shared Functionality Extracted & Relocated**:
   - Extracted shared online network and Hunter's Dream logic to `launcher/bbport_net.py`.
   - Relocated bundled gamepad and keyboard prompt mods to root `bundled/` and `mods/`.
