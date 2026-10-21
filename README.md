@@ -13,18 +13,18 @@ This project is derived from the work of [Jgamrot](https://github.com/Jgamrot/bl
 
 ## Fork Direction & Divergence
 
-The objective of this fork is to transform the codebase into a genuinely Linux-first product with a clean native GTK4/libadwaita launcher, optimized Vulkan upscaling, and no Windows launcher baggage:
+The objective of this fork is to take the port's barebones Linux launcher and develop it into a fully featured native GTK4/libadwaita control surface with the same feature set as the Windows launcher, while keeping the optimized Vulkan upscaling path:
 
-1. **Purged Windows Launcher & Packaging**:
-   - Completely eliminated the Windows launcher UI (`bbport_launcher_win.py`, `bbport_launcher_qml.py`, `bbport_launcher_backend.py`, and `launcher/qml/`).
-   - Removed Windows packaging and build wrappers (`packaging/windows/`, `.rc` resource files, `.manifest`, Windows-only launcher tests).
-   - Removed obsolete Windows translation matrices (`bbport_lang.py`, `bbport_lang_more.py`).
-   - Extracted shared online network services and Hunter's Dream account logic into a Linux-native module: [`launcher/bbport_net.py`](launcher/bbport_net.py).
-   - Relocated bundled gamepad and keyboard prompt mods into top-level directories: [`bundled/`](bundled/) and [`mods/`](mods/).
-   - Preserved third-party licensing in [`licenses/`](licenses/).
+1. **Refined Linux Launcher (built out from the barebones launcher)**:
+   - Started from the port's minimal Linux launcher and grew it into a complete control surface: Overview, Graphics, Display, Game & saves, Mods & patches, Online, System, Diagnostics, and Setup.
+   - Matched the Windows launcher's feature set: graphics presets and FSR 3.1/FSR 4/DLSS selection, internal-resolution scaling and persistence, mods and patches, Hunter's Dream sign-in and co-op setup, launch diagnostics, restart supervision, and desktop integration.
+   - Added strict XDG configuration, a six-language UI, internal-resolution calculations, and a native GTK4/libadwaita layout on top of the original launcher.
+   - The Windows launcher is not replaced or purged: it remains maintained in the Windows tree/branch (`windows_laucnher/`), and both launchers share the renderer, settings keys (`bbport.ini`), and preparation scripts.
+   - Linux packaging (`launcher/bb-launcher.sh`, `--install-desktop`, Nix/AppImage) stays in this branch; Windows packaging stays with the Windows launcher.
+   - Shared online network and Hunter's Dream account logic live in [`launcher/bbport_net.py`](launcher/bbport_net.py); bundled prompt mods are in [`bundled/`](bundled/) and [`mods/`](mods/); third-party licensing is preserved in [`licenses/`](licenses/).
 
 2. **Native Linux Experience**:
-   - The native GTK4 + libadwaita launcher ([`launcher/bbport_launcher.py`](launcher/bbport_launcher.py)) is the primary, sole supported control surface.
+   - The native GTK4 + libadwaita launcher ([`launcher/bbport_launcher.py`](launcher/bbport_launcher.py)) is the primary control surface on Linux.
    - Strict XDG compliance for configuration (`~/.config/bbport-launcher/settings.json`), user data, and saves (`~/.local/share/bbport/user/`).
    - Single-command desktop entry installation (`launcher/bbport_launcher.py --install-desktop`) integrating with your Linux application launcher.
 
