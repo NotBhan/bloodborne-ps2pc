@@ -97,8 +97,8 @@ HERO_ART = PORT_DIR / 'launcher' / 'art' / 'hero.png'
 STRIP_ART = PORT_DIR / 'launcher' / 'art' / 'strip.png'
 # Co-op: the community server that answers the game's own server requests.
 COMMUNITY_SERVER = 'https://thehuntersdream.com'
-RELEASES_API = 'https://api.github.com/repos/NotBhan/bloodborne_pc_notbhan/releases/latest'
-RELEASES_PAGE = 'https://github.com/NotBhan/bloodborne_pc_notbhan/releases/latest'
+RELEASES_API = 'https://api.github.com/repos/NotBhan/bloodborne-ps2pc/releases/latest'
+RELEASES_PAGE = 'https://github.com/NotBhan/bloodborne-ps2pc/releases/latest'
 UPDATE_DIR = Path(tempfile.gettempdir()) / 'bbport-update'
 # The last answer from GitHub, so a direct launch (no launcher window) can check quietly and the
 # launcher shows the result the next time it opens. Off with check_updates like every check.

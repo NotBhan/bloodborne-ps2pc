@@ -11,8 +11,8 @@ compatible with the existing Windows build.
 
 ## Release 1.10.7
 
-Download [bbport-windows.zip](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/download/v1.10.7/bbport-windows.zip)
-from the [release page](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/tag/v1.10.7).
+Download [bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.7/bbport-windows.zip)
+from the [release page](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.7).
 This build includes trophy details and automatic platinum, Discord Rich Presence on both
 platforms, shader precompile controls, and the recorder, motion-vector, cache and shader
 pre-build fixes from 1.9.7. See [CHANGELOG.md](CHANGELOG.md) and the
@@ -65,7 +65,7 @@ declared in `launcher/bbport_launcher_backend.py` (`LAUNCHER_PAGES`), and
 ## Updates
 
 Update checks, the Overview notice, and **System → Install update** use
-[this fork's releases](https://github.com/NotBhan/bloodborne_pc_notbhan/releases), never the
+[this fork's releases](https://github.com/NotBhan/bloodborne-ps2pc/releases), never the
 upstream Jgamrot package. The installed release tag is tracked separately from `VERSION`, so
 the release the build was cut from is not offered as an update.
 

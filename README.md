@@ -6,7 +6,7 @@ fork is based on [Supermedo's Windows port](https://github.com/Supermedo/bloodbo
 Mohammed Albarghouthi, which builds on [deadinside28's bbport](https://github.com/deadinside28/bloodborne_pc)
 and the [shadPS4](https://github.com/shadps4-emu/shadPS4) renderer. The same repository also
 carries the Linux launcher in the
-[`linux-launcher` branch](https://github.com/NotBhan/bloodborne_pc_notbhan/tree/linux-launcher).
+[`linux-launcher` branch](https://github.com/NotBhan/bloodborne-ps2pc/tree/linux-launcher).
 
 > **No game files are included.** You need your own dump of Bloodborne. This project is not
 > affiliated with Sony Interactive Entertainment or FromSoftware.
@@ -25,15 +25,15 @@ settings keys, and preparation scripts.
 
 ## Download
 
-Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/download/v1.10.7/bbport-windows.zip)**
-from the [1.10.7 release](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/tag/v1.10.7)
+Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.7/bbport-windows.zip)**
+from the [1.10.7 release](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.7)
 and extract the whole archive. The archive contains the frozen launcher (`Bloodborne.exe`),
 `bin/bb-probe.exe`, the preparation scripts, shader catalog and the runtime DLLs; no Python
 install is required. The source archives on the release page are for developers. It contains
 no game files.
 
 The same release page also carries the Linux bundle
-([`bbport-linux-x86_64.tar.gz`](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/download/v1.10.7/bbport-linux-x86_64.tar.gz)).
+([`bbport-linux-x86_64.tar.gz`](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.7/bbport-linux-x86_64.tar.gz)).
 See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 [changelog](docs/CHANGELOG.md).
 
@@ -262,14 +262,14 @@ page take precedence:
 ## Roadmap, help and source
 
 - What is planned next: [docs/ROADMAP.md](docs/ROADMAP.md).
-- Problems: open an [issue](https://github.com/NotBhan/bloodborne_pc_notbhan/issues) with your graphics
+- Problems: open an [issue](https://github.com/NotBhan/bloodborne-ps2pc/issues) with your graphics
   card, what happened, `user\last_run.log`, and the launcher session log saved from
   **Diagnostics → Save log…** (or `%APPDATA%\bbport-launcher\launcher-debug.log` when started with
   `BB_LAUNCHER_DEBUG=1`).
 - Release history: [docs/CHANGELOG.md](docs/CHANGELOG.md).
 - Launcher UI, build and Wine verification: [docs/WINDOWS_LAUNCHER.md](docs/WINDOWS_LAUNCHER.md).
 - Wine page-transition fix: [docs/WINE_LAUNCHER_RENDERING.md](docs/WINE_LAUNCHER_RENDERING.md).
-- Building: [packaging/windows/README.md](https://github.com/NotBhan/bloodborne_pc_notbhan/blob/windows-launcher-refined/packaging/windows/README.md).
+- Building: [packaging/windows/README.md](https://github.com/NotBhan/bloodborne-ps2pc/blob/windows-launcher-refined/packaging/windows/README.md).
 
 ## Credits
 

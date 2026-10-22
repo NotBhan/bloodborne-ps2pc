@@ -60,8 +60,8 @@ class QuietUpdateCheckTests(unittest.TestCase):
 
 class ForkReleaseTests(unittest.TestCase):
     def test_updates_come_from_this_fork(self):
-        self.assertIn('NotBhan/bloodborne_pc_notbhan', core.RELEASES_API)
-        self.assertIn('NotBhan/bloodborne_pc_notbhan', core.RELEASES_PAGE)
+        self.assertIn('NotBhan/bloodborne-ps2pc', core.RELEASES_API)
+        self.assertIn('NotBhan/bloodborne-ps2pc', core.RELEASES_PAGE)
 
     def test_release_tags_compare_against_the_installed_tag(self):
         with patch.object(core, 'CURRENT_RELEASE_TAG', 'v1.10.7'):

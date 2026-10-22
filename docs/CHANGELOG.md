@@ -1,7 +1,7 @@
 # Changelog
 
 Windows releases of this fork, newest first. Each is on the
-[NotBhan release page](https://github.com/NotBhan/bloodborne_pc_notbhan/releases) as
+[NotBhan release page](https://github.com/NotBhan/bloodborne-ps2pc/releases) as
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
@@ -33,7 +33,7 @@ Planned work is in [ROADMAP.md](ROADMAP.md).
   (`BB_PRECOMPILE_ONLY`) that exits by itself. Recorded shaders no longer wait for the first
   fight or area to compile; brand-new shaders still compile once when first drawn.
 - **Release update channel:** update checks and in-app installs now use
-  [this repository's releases](https://github.com/NotBhan/bloodborne_pc_notbhan/releases)
+  [this repository's releases](https://github.com/NotBhan/bloodborne-ps2pc/releases)
   instead of upstream Jgamrot releases, so an update cannot replace this build with a different
   package. Plain `vX.Y.Z` tags are compared against the installed tag, so the current release is
   not offered again; legacy `-fork.N` tags remain ordered correctly.
