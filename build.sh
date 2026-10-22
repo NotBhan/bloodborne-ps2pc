@@ -28,6 +28,16 @@ MINGW*|MSYS*)
         echo 'Build failed (full log: out/gpu-build.log)' >&2; exit 1
     fi
     cp out/gpu/bb-probe.exe out/gpu/bb-gpu-capabilities.exe out/gpu/bb-play.exe out/
+    # Discord Rich Presence companion (tools/bloodborne_rpc): run.py starts it beside the game.
+    rpc="out/companions/Discord Rich Presence"
+    mkdir -p "$rpc"
+    if clang++ -std=c++17 -O2 -DUNICODE -D_UNICODE -municode -mwindows -static \
+        tools/bloodborne_rpc/main.cpp -o "$rpc/BloodborneRPC.exe" -lkernel32 -luser32 2>out/rpc-build.log; then
+        cp tools/bloodborne_rpc/companion.json tools/bloodborne_rpc/config.json "$rpc/"
+        echo "Built $PWD/$rpc/BloodborneRPC.exe"
+    else
+        echo 'Discord RPC companion not built (see out/rpc-build.log)' >&2
+    fi
     echo "Built $PWD/out/bb-probe.exe"
     exit 0
     ;;
