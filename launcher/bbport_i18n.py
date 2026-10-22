@@ -396,6 +396,21 @@ EN = {
     'Image Quality and Sharpening': 'Image Quality and Sharpening',
     'Compatibility': 'Compatibility',
     'Performance and Diagnostics': 'Performance and Diagnostics',
+    'Предварительно компилировать шейдеры': 'Precompile shaders',
+    'Собирать известные шейдеры при запуске (меньше подтормаживаний)':
+        'Build known shaders at launch (less stutter)',
+    'Скомпилировать шейдеры сейчас': 'Precompile shaders now',
+    'Короткий запуск игры для прогрева кэша; окно игры откроется ненадолго':
+        'A short game run warms the cache; the game window opens briefly',
+    'Скомпилировать': 'Precompile',
+    'Компиляция…': 'Precompiling…',
+    'Компиляция шейдеров… окно игры откроется ненадолго.':
+        'Precompiling shaders… the game window opens briefly.',
+    'Сначала закройте игру.': 'Close the game first.',
+    'Дождитесь окончания компиляции шейдеров.': 'Wait for the shader precompile to finish.',
+    'Шейдеры скомпилированы. Следующий запуск будет быстрее.':
+        'Shaders precompiled. The next launch starts faster.',
+    'Не удалось скомпилировать шейдеры (код {}).': 'Shader precompile failed (exit code {}).',
 }
 
 # Multi-language translation catalogs keyed by canonical English text
@@ -744,6 +759,22 @@ FR = {
     'Image Quality and Sharpening': 'Qualité d image et netteté',
     'Compatibility': 'Compatibilité',
     'Performance and Diagnostics': 'Performances et diagnostics',
+    'Precompile shaders': 'Précompiler les shaders',
+    'Build known shaders at launch (less stutter)':
+        'Compiler les shaders connus au lancement (moins de saccades)',
+    'Precompile shaders now': 'Précompiler les shaders maintenant',
+    'A short game run warms the cache; the game window opens briefly':
+        'Un court lancement du jeu prépare le cache ; la fenêtre du jeu s ouvre brièvement',
+    'Precompile': 'Précompiler',
+    'Precompiling…': 'Précompilation…',
+    'Precompiling shaders… the game window opens briefly.':
+        'Précompilation des shaders… la fenêtre du jeu s ouvre brièvement.',
+    'Close the game first.': 'Fermez d abord le jeu.',
+    'Wait for the shader precompile to finish.': 'Attendez la fin de la précompilation des shaders.',
+    'Shaders precompiled. The next launch starts faster.':
+        'Shaders précompilés. Le prochain lancement sera plus rapide.',
+    'Shader precompile failed (exit code {}).':
+        'Échec de la précompilation des shaders (code {}).',
 }
 
 RU = {
@@ -1438,6 +1469,17 @@ ZH = {
     'Image Quality and Sharpening': '图像质量与锐化',
     'Compatibility': '兼容性',
     'Performance and Diagnostics': '性能与诊断',
+    'Precompile shaders': '预编译着色器',
+    'Build known shaders at launch (less stutter)': '启动时编译已知着色器（减少卡顿）',
+    'Precompile shaders now': '立即预编译着色器',
+    'A short game run warms the cache; the game window opens briefly': '短暂启动游戏以预热缓存；游戏窗口会短暂出现',
+    'Precompile': '预编译',
+    'Precompiling…': '正在预编译…',
+    'Precompiling shaders… the game window opens briefly.': '正在预编译着色器…游戏窗口会短暂出现。',
+    'Close the game first.': '请先关闭游戏。',
+    'Wait for the shader precompile to finish.': '请等待着色器预编译完成。',
+    'Shaders precompiled. The next launch starts faster.': '着色器已预编译。下次启动会更快。',
+    'Shader precompile failed (exit code {}).': '着色器预编译失败（退出码 {}）。',
 }
 
 KO = {
@@ -1783,6 +1825,17 @@ KO = {
     'Image Quality and Sharpening': '이미지 품질 및 선명도',
     'Compatibility': '호환성',
     'Performance and Diagnostics': '성능 및 진단',
+    'Precompile shaders': '셰이더 미리 컴파일',
+    'Build known shaders at launch (less stutter)': '실행 시 알려진 셰이더 컴파일 (끊김 감소)',
+    'Precompile shaders now': '지금 셰이더 미리 컴파일',
+    'A short game run warms the cache; the game window opens briefly': '게임을 짧게 실행해 캐시를 예열합니다. 게임 창이 잠시 열립니다',
+    'Precompile': '미리 컴파일',
+    'Precompiling…': '미리 컴파일 중…',
+    'Precompiling shaders… the game window opens briefly.': '셰이더 미리 컴파일 중… 게임 창이 잠시 열립니다.',
+    'Close the game first.': '먼저 게임을 종료하세요.',
+    'Wait for the shader precompile to finish.': '셰이더 미리 컴파일이 끝날 때까지 기다리세요.',
+    'Shaders precompiled. The next launch starts faster.': '셰이더를 미리 컴파일했습니다. 다음 실행이 더 빨라집니다.',
+    'Shader precompile failed (exit code {}).': '셰이더 미리 컴파일 실패 (종료 코드 {}).',
 }
 
 JA = {
@@ -2128,6 +2181,17 @@ JA = {
     'Image Quality and Sharpening': '画質とシャープネス',
     'Compatibility': '互換性',
     'Performance and Diagnostics': 'パフォーマンスと診断',
+    'Precompile shaders': 'シェーダーを事前コンパイル',
+    'Build known shaders at launch (less stutter)': '起動時に既知のシェーダーをコンパイル（カクつき低減）',
+    'Precompile shaders now': '今すぐシェーダーを事前コンパイル',
+    'A short game run warms the cache; the game window opens briefly': 'ゲームを短時間起動してキャッシュを温めます。ゲームウィンドウが一瞬開きます',
+    'Precompile': '事前コンパイル',
+    'Precompiling…': '事前コンパイル中…',
+    'Precompiling shaders… the game window opens briefly.': 'シェーダーを事前コンパイル中…ゲームウィンドウが一瞬開きます。',
+    'Close the game first.': '先にゲームを終了してください。',
+    'Wait for the shader precompile to finish.': 'シェーダーの事前コンパイルが終わるまでお待ちください。',
+    'Shaders precompiled. The next launch starts faster.': 'シェーダーを事前コンパイルしました。次回の起動が速くなります。',
+    'Shader precompile failed (exit code {}).': 'シェーダーの事前コンパイルに失敗しました（終了コード {}）。',
 }
 
 CATALOGS = {

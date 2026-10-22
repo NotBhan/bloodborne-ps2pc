@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <stdexcept>
 #include "common/serdes.h"
 #include "core/emulator_settings.h"
@@ -404,6 +405,22 @@ bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) 
 }
 
 void PipelineCache::WarmUp() {
+    // bbport: the launcher's "Precompile shaders" action starts the game only to run this
+    // warm-up, then exits so the next launch starts warm. Close() joins the cache writer before
+    // the process ends, so the records are flushed.
+    struct PrecompileExit {
+        const bool enabled = std::getenv("BB_PRECOMPILE_ONLY") != nullptr;
+        ~PrecompileExit() {
+            if (!enabled) {
+                return;
+            }
+            Storage::DataBase::Instance().Close();
+            std::printf("Shader pre-build: precompile run finished; exiting\n");
+            std::fflush(nullptr);
+            std::_Exit(0);
+        }
+    } precompile_exit;
+
     if (!EmulatorSettings.IsPipelineCacheEnabled()) {
         return;
     }

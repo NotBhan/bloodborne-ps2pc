@@ -562,6 +562,11 @@ class GameEnvironmentTests(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertNotIn(key, env)
 
+    def test_precompile_setting_controls_shader_prebuild(self):
+        self.assertEqual(launcher.game_environment(self.settings())["BB_SHADER_PREBUILD"], "1")
+        env = launcher.game_environment(self.settings(precompile_shaders=False))
+        self.assertEqual(env["BB_SHADER_PREBUILD"], "0")
+
     def test_all_optional_settings_are_exported(self):
         user = self.root / "saves"
         dlc = self.root / "addcont"

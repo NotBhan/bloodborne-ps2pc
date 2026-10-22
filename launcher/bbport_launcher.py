@@ -14,6 +14,7 @@ import math
 import os
 import shutil
 import signal
+import subprocess
 import sys
 import tempfile
 import threading
@@ -210,6 +211,7 @@ DEFAULTS = {
     "draw_pipe": "",
     "readbacks": "",
     "mangohud": False,
+    "precompile_shaders": True,
     "frame_stats": False,
     "gpu_profile": False,
     "vk_validation": False,
@@ -239,9 +241,9 @@ INI_DEFAULTS = {
        for key, _, default in EFFECTS + ENHANCEMENTS + CHEATS_AND_TWEAKS},
 }
 
-BOOL_SETTINGS = {"mods_enabled", "fullscreen", "hdr", "mangohud", "frame_stats",
-                 "gpu_profile", "vk_validation", "start_minimized", "close_to_tray",
-                 "check_updates", "show_confirmation", "reduce_motion"}
+BOOL_SETTINGS = {"mods_enabled", "fullscreen", "hdr", "mangohud", "precompile_shaders",
+                 "frame_stats", "gpu_profile", "vk_validation", "start_minimized",
+                 "close_to_tray", "check_updates", "show_confirmation", "reduce_motion"}
 STRING_SETTINGS = {"ui_language", "control_scheme", "game_dir", "user_dir", "mods_dir", "patches_dir",
                     "language", "player_name", "dlc_dir", "present_mode", "fps_mode",
                     "draw_pipe", "readbacks", "extra_env", "ui_scale", "theme"}
@@ -430,6 +432,7 @@ def game_environment(s):
         env["BB_GPU_PROFILE"] = "1"
     if s["vk_validation"]:
         env["BB_VK_VALIDATION"] = "1"
+    env["BB_SHADER_PREBUILD"] = "1" if s.get("precompile_shaders", True) else "0"
     for item in s["extra_env"].split():
         if "=" in item:
             key, value = item.split("=", 1)
@@ -884,6 +887,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         self._stopping_pid = None
         self.stream = None
         self.downloading_fsr4 = False
+        self.precompiling = False
         self.build()
         self.connect("close-request", self.on_close)
 
@@ -1375,6 +1379,18 @@ class LauncherWindow(Adw.ApplicationWindow):
                                        subtitle="BB_FRAME_STATS",
                                        active=self.settings["frame_stats"])
         perf.add(self.stats_row)
+        self.precompile_row = Adw.SwitchRow(
+            title=tr("Предварительно компилировать шейдеры"),
+            subtitle=tr("Собирать известные шейдеры при запуске (меньше подтормаживаний)"),
+            active=self.settings.get("precompile_shaders", True))
+        perf.add(self.precompile_row)
+        self.precompile_build_row = Adw.ActionRow(
+            title=tr("Скомпилировать шейдеры сейчас"),
+            subtitle=tr("Короткий запуск игры для прогрева кэша; окно игры откроется ненадолго"))
+        self.precompile_button = Gtk.Button(label=tr("Скомпилировать"), valign=Gtk.Align.CENTER)
+        self.precompile_button.connect("clicked", self.on_precompile_shaders)
+        self.precompile_build_row.add_suffix(self.precompile_button)
+        perf.add(self.precompile_build_row)
         self.profile_row = Adw.SwitchRow(title=tr("Профиль GPU в журнале"),
                                          subtitle="BB_GPU_PROFILE",
                                          active=self.settings["gpu_profile"])
@@ -2212,6 +2228,60 @@ class LauncherWindow(Adw.ApplicationWindow):
             if hasattr(self, "hero_assets_summary"):
                 self.hero_assets_summary.set_markup(f"<span foreground='#e67e22'>●</span> <b>{total - missing} / {total} files</b>\n<span foreground='#8c867a'>{tr('Download assets')}</span>")
 
+    def on_precompile_shaders(self, _button):
+        """Warm the shader/pipeline cache: run the game's pre-build, then exit
+        (BB_PRECOMPILE_ONLY), so the next launch starts with the cache warm."""
+        if self.process_active():
+            self.toasts.add_toast(Adw.Toast(title=tr("Сначала закройте игру.")))
+            return
+        if self.precompiling:
+            return
+        self.store()
+        self.precompiling = True
+        self.precompile_button.set_sensitive(False)
+        self.precompile_button.set_label(tr("Компиляция…"))
+        self.toasts.add_toast(Adw.Toast(
+            title=tr("Компиляция шейдеров… окно игры откроется ненадолго.")))
+        env = self.environment()
+        env["BB_PRECOMPILE_ONLY"] = "1"
+        env["BB_SHADER_PREBUILD"] = "1"
+        lines = []
+
+        def work():
+            code = 1
+            try:
+                process = subprocess.Popen(
+                    ["bash", str(PORT_DIR / "run.sh")], cwd=str(PORT_DIR), env=env,
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                    errors="replace")
+                for line in process.stdout:
+                    lines.append(line.rstrip("\n"))
+                code = process.wait()
+                if code == 0 and not any("Shader pre-build:" in text for text in lines):
+                    code = 2  # the game started but the pre-build did not run
+            except OSError as error:
+                lines.append(str(error))
+            GLib.idle_add(self.on_precompile_finished, code, lines)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def on_precompile_finished(self, code, lines):
+        self.precompiling = False
+        if hasattr(self, "precompile_button"):
+            self.precompile_button.set_sensitive(True)
+            self.precompile_button.set_label(tr("Скомпилировать"))
+        if code == 0:
+            self.toasts.add_toast(Adw.Toast(
+                title=tr("Шейдеры скомпилированы. Следующий запуск будет быстрее.")))
+            return
+        dialog = Adw.MessageDialog.new(
+            self,
+            tr("Не удалось скомпилировать шейдеры (код {}).").format(code),
+            "\n".join(lines[-12:]) or None,
+        )
+        dialog.add_response("ok", tr("Закрыть"))
+        dialog.present()
+
     def on_fetch_fsr4(self, _button):
         if self.downloading_fsr4:
             return
@@ -2385,6 +2455,8 @@ class LauncherWindow(Adw.ApplicationWindow):
             s["frames_ahead"] = int(self.frames_ahead_row.get_value())
         if hasattr(self, "mangohud_row"):
             s["mangohud"] = self.mangohud_row.get_active()
+        if hasattr(self, "precompile_row"):
+            s["precompile_shaders"] = self.precompile_row.get_active()
         if hasattr(self, "stats_row"):
             s["frame_stats"] = self.stats_row.get_active()
         if hasattr(self, "profile_row"):
@@ -2604,6 +2676,9 @@ class LauncherWindow(Adw.ApplicationWindow):
     def on_launch(self, _button):
         if self.process:
             self.stop_game()
+            return
+        if self.precompiling:
+            self.toasts.add_toast(Adw.Toast(title=tr("Дождитесь окончания компиляции шейдеров.")))
             return
         self.store()
         self.log_view.get_buffer().set_text("")

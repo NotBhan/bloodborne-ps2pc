@@ -7,6 +7,11 @@ Planned work is in [ROADMAP.md](ROADMAP.md).
 
 ## Unreleased
 
+- **Shader precompile:** the performance settings now expose the automatic shader pre-build
+  (`BB_SHADER_PREBUILD`) and a **Precompile shaders now** action. It runs the pipeline warm-up
+  in a short game run (`BB_PRECOMPILE_ONLY`) that exits by itself, so recorded shaders no
+  longer wait for the first fight or area to compile. Brand-new shaders still compile once
+  when first drawn.
 - **Windows launcher rework:** a persistent named rail now separates Overview, Graphics,
   Display, Game & saves, Mods & patches, Online, System and Diagnostics. All existing
   settings, mod/patch controls, co-op/sign-in actions and setup steps remain available.
