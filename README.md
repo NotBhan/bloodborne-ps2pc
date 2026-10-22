@@ -25,33 +25,33 @@ settings keys, and preparation scripts.
 
 ## Download
 
-Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/download/v1.9.7-fork.1/bbport-windows.zip)**
-from the [1.9.7 fork.1 release](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/tag/v1.9.7-fork.1)
+Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/download/v1.10.7/bbport-windows.zip)**
+from the [1.10.7 release](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/tag/v1.10.7)
 and extract the whole archive. The archive contains the frozen launcher (`Bloodborne.exe`),
 `bin/bb-probe.exe`, the preparation scripts, shader catalog and the runtime DLLs; no Python
 install is required. The source archives on the release page are for developers. It contains
 no game files.
 
 The same release page also carries the Linux bundle
-([`bbport-linux-x86_64.tar.gz`](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/download/v1.9.7-fork.1/bbport-linux-x86_64.tar.gz)).
+([`bbport-linux-x86_64.tar.gz`](https://github.com/NotBhan/bloodborne_pc_notbhan/releases/download/v1.10.7/bbport-linux-x86_64.tar.gz)).
 See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 [changelog](docs/CHANGELOG.md).
 
-## What's new in 1.9.7 fork.1
+## What's new in 1.10.7
 
-- **Recorder stability.** Deferred Vulkan recorder work now runs on the owning thread, the
-  recorder-mode flags are atomic, and chunk mutation is serialized. This targets the
-  long-session `libvulkan_radeon` SIGSEGV on `bb:VkRecorder`.
-- **Object motion on RDNA 2.** The in-game PC menu and `bbport.ini` can opt in to object-motion
-  vectors on AMD RDNA 2; restart to apply. Hard initialization failures still refuse it.
-- **Camera motion vectors.** Points behind the previous camera are treated as disoccluded,
-  reprojection is bounded, and NaN/Inf is filtered.
-- **Texture cache.** Memory-property queries are no longer issued twice per guest submission,
-  and LRU checks are throttled.
-- **Pipeline cache.** Diagnostics plus 10-minute eviction of unused `VkPipeline` objects
-  (`BB_PIPELINE_GC_MINUTES`; `0` disables).
-- **Shader pre-build.** Shader code is extracted from the game files before boot and reused
-  through a stamp; `BB_SHADER_PREBUILD=0` disables it.
+- **Trophy details and triggers.** Trophy names, descriptions, grades, counts, progress and
+  Gamerscore now come from your own trophy pack and keys. The platinum is granted when every
+  base trophy is unlocked, per-trophy info and unlock state are implemented, and both launchers
+  can import `keys.json`.
+- **Discord Rich Presence.** The bundled companion now runs on Windows and Linux, starts with
+  the game when present (launcher toggle), and shows the area, level, Blood Echoes and Insight.
+- **Shader precompile controls.** A switch controls the automatic pre-build, and **Precompile
+  shaders now** runs the pipeline warm-up in a short game run that exits by itself. Recorded
+  shaders no longer wait for the first fight or area.
+- **Release update channel.** Update checks and in-app installs use this repository's releases
+  with plain `vX.Y.Z` tags, so an update cannot replace this build with a different package.
+- The renderer, recorder, motion-vector, cache and shader pre-build fixes from 1.9.7 remain in
+  this build.
 
 ## Features
 

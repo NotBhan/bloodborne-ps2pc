@@ -5,7 +5,7 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
-## Unreleased
+## 1.10.7 (2026-10-22)
 
 - **Trophies:** `sceNpTrophyGetGameInfo` now reports real counts, grade splits and progress;
   `sceNpTrophyGetTrophyInfo` returns names/descriptions/grade/unlock state; the system grants
@@ -19,11 +19,11 @@ Planned work is in [ROADMAP.md](ROADMAP.md).
   **System → Maintenance → Precompile shaders** runs the pipeline warm-up in a short game run
   (`BB_PRECOMPILE_ONLY`) that exits by itself. Recorded shaders no longer wait for the first
   fight or area to compile; brand-new shaders still compile once when first drawn.
-- **Fork update channel:** update checks and in-app installs now use
-  [this fork's releases](https://github.com/NotBhan/bloodborne_pc_notbhan/releases) instead of
-  upstream Jgamrot releases, so an update cannot replace this build with a different package.
-  Fork tags (`vX.Y.Z-fork.N`) are compared against the installed tag, so the current release
-  is not offered again.
+- **Release update channel:** update checks and in-app installs now use
+  [this repository's releases](https://github.com/NotBhan/bloodborne_pc_notbhan/releases)
+  instead of upstream Jgamrot releases, so an update cannot replace this build with a different
+  package. Plain `vX.Y.Z` tags are compared against the installed tag, so the current release is
+  not offered again; legacy `-fork.N` tags remain ordered correctly.
 
 ## 1.9.7 fork.1 (2026-10-21)
 

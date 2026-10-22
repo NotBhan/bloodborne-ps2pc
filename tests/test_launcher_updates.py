@@ -63,12 +63,12 @@ class ForkReleaseTests(unittest.TestCase):
         self.assertIn('NotBhan/bloodborne_pc_notbhan', core.RELEASES_API)
         self.assertIn('NotBhan/bloodborne_pc_notbhan', core.RELEASES_PAGE)
 
-    def test_fork_release_tags_compare_against_the_installed_tag(self):
-        with patch.object(core, 'CURRENT_RELEASE_TAG', 'v1.9.7-fork.1'):
-            self.assertFalse(core.release_is_newer('v1.9.7-fork.1'))
-            self.assertFalse(core.release_is_newer('v1.9.7'))
-            self.assertTrue(core.release_is_newer('v1.9.7-fork.2'))
-            self.assertTrue(core.release_is_newer('v1.9.8'))
+    def test_release_tags_compare_against_the_installed_tag(self):
+        with patch.object(core, 'CURRENT_RELEASE_TAG', 'v1.10.7'):
+            self.assertFalse(core.release_is_newer('v1.10.7'))
+            self.assertFalse(core.release_is_newer('v1.10.6'))
+            self.assertTrue(core.release_is_newer('v1.10.8'))
+            self.assertTrue(core.release_is_newer('v1.11.0'))
 
 
 if __name__ == '__main__':
