@@ -510,20 +510,23 @@ menubutton.ps5-sort:hover {
     margin-top: 2px;
 }
 
-button.ps5-filter {
-    background-color: rgba(255, 255, 255, 0.10);
+button.ps5-filter,
+menubutton.ps5-filter,
+menubutton.ps5-filter:hover,
+menubutton.ps5-filter > button,
+menubutton.ps5-filter > button:hover {
+    background: transparent;
     background-image: none;
     border: none;
-    border-radius: 999px;
     box-shadow: none;
-    color: #ffffff;
-    min-width: 38px;
-    min-height: 38px;
-    padding: 0;
+    color: rgba(255, 255, 255, 0.70);
+    min-width: 0;
+    min-height: 0;
+    padding: 2px 0;
 }
 
-button.ps5-filter:hover {
-    background-color: rgba(255, 255, 255, 0.18);
+menubutton.ps5-filter:hover {
+    color: #ffffff;
 }
 
 .ps5-popover-item {

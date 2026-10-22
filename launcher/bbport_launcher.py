@@ -1207,6 +1207,27 @@ class LauncherWindow(Adw.ApplicationWindow):
         sub_spacer.set_hexpand(True)
         subheader.append(sub_spacer)
 
+        self.trophy_filter_values = ["all", "earned", "locked"]
+        self.trophy_filter = "all"
+        self.trophy_filter_button = Gtk.MenuButton()
+        self.trophy_filter_button.add_css_class("ps5-filter")
+        filter_child = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.trophy_filter_label = Gtk.Label(label=tr("Filter"))
+        filter_child.append(self.trophy_filter_label)
+        self.trophy_filter_button.set_child(filter_child)
+        self.trophy_filter_button.set_tooltip_text(tr("Filter"))
+        filter_popover = Gtk.Popover()
+        filter_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        for value, label in (("all", tr("All")), ("earned", tr("Earned")),
+                             ("locked", tr("Locked"))):
+            choice = Gtk.Button(label=label)
+            choice.add_css_class("ps5-popover-item")
+            choice.connect("clicked", lambda _b, v=value: self.set_trophy_filter(v))
+            filter_box.append(choice)
+        filter_popover.set_child(filter_box)
+        self.trophy_filter_button.set_popover(filter_popover)
+        subheader.append(self.trophy_filter_button)
+
         self.trophy_sort_values = ["default", "grade", "recent"]
         self.trophy_sort = "default"
         self.trophy_sort_button = Gtk.MenuButton()
@@ -1229,25 +1250,6 @@ class LauncherWindow(Adw.ApplicationWindow):
         body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
         body.set_vexpand(True)
         body.add_css_class("ps5-trophy-body")
-
-        self.trophy_filter_values = ["all", "earned", "locked"]
-        self.trophy_filter = "all"
-        self.trophy_filter_button = Gtk.MenuButton()
-        self.trophy_filter_button.set_icon_name("view-filter-symbolic")
-        self.trophy_filter_button.add_css_class("ps5-filter")
-        self.trophy_filter_button.set_valign(Gtk.Align.START)
-        self.trophy_filter_button.set_tooltip_text(tr("Filter"))
-        filter_popover = Gtk.Popover()
-        filter_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        for value, label in (("all", tr("All")), ("earned", tr("Earned")),
-                             ("locked", tr("Locked"))):
-            choice = Gtk.Button(label=label)
-            choice.add_css_class("ps5-popover-item")
-            choice.connect("clicked", lambda _b, v=value: self.set_trophy_filter(v))
-            filter_box.append(choice)
-        filter_popover.set_child(filter_box)
-        self.trophy_filter_button.set_popover(filter_popover)
-        body.append(self.trophy_filter_button)
 
         self.trophy_content_stack = Gtk.Stack()
         self.trophy_content_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
@@ -1294,10 +1296,12 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def set_trophy_filter(self, value):
         self.trophy_filter = value
+        label = {"all": tr("All"), "earned": tr("Earned"),
+                 "locked": tr("Locked")}.get(value, tr("All"))
+        if hasattr(self, "trophy_filter_label"):
+            self.trophy_filter_label.set_text(tr("Filter") + ": " + label)
         if hasattr(self, "trophy_filter_button"):
-            self.trophy_filter_button.set_tooltip_text(
-                tr("Filter") + ": " + {"all": tr("All"), "earned": tr("Earned"),
-                                       "locked": tr("Locked")}.get(value, tr("All")))
+            self.trophy_filter_button.set_tooltip_text(tr("Filter") + ": " + label)
         self.refresh_trophies()
 
     def set_trophy_sort(self, value):

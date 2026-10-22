@@ -9,6 +9,14 @@ This project is derived from the work of [Jgamrot](https://github.com/Jgamrot/bl
 > [!IMPORTANT]
 > **No game files are included.** You must provide your own decrypted dump of Bloodborne (CUSA03173, patch version 1.09). This project is not affiliated with, endorsed by, or associated with Sony Interactive Entertainment or FromSoftware.
 
+## Screenshots
+
+| Game Details | Trophies |
+| --- | --- |
+| ![Game Details](docs/images/launcher.jpg) | ![Trophies](docs/images/trophies.jpg) |
+| **Settings** | **Key bindings** |
+| ![Settings](docs/images/settings.jpg) | ![Key bindings](docs/images/settings-keyboard.jpg) |
+
 ---
 
 ## Fork Direction & Divergence
