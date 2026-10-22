@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Bloodborne launcher for the native Linux port (GTK4 / libadwaita).
 
-Cinematic Gothic Hybrid redesign featuring:
-- Dramatic Bloodborne Victorian gothic home screen and hero section
-- Clean multi-page navigation (Home, Graphics, Game, Downloads, Settings, Log)
+Game-first shell with three destinations:
+- Game Details: artwork, real readiness, launch controls and activity journal
+- Trophies: local trophy cache and unlock history
+- Settings: display, graphics, upscaling, performance, compatibility, controller,
+  game data, launcher preferences and diagnostics
 - Dedicated 6-language switcher (EN, FR, RU, ZH, KO, JA)
 - Robust settings persistence and supervisor integration
 """
@@ -12,13 +14,16 @@ Cinematic Gothic Hybrid redesign featuring:
 import json
 import math
 import os
+import re
 import shutil
 import signal
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 LAUNCHER_DIR = Path(__file__).resolve().parent
@@ -43,14 +48,31 @@ from bbport_assets import (
     is_xbox_prompt,
     validate_fsr4_file,
 )
+from bbport_activity import add_playtime, load_events, load_playtime, record_event
 from bbport_i18n import language, set_language, tr
-from bbport_readiness import import_trophy_key, valid_trophy_key
+from bbport_readiness import check_readiness, import_trophy_key, valid_trophy_key
+from bbport_trophies import GRADE_ORDER, GRADES, load_trophy_report
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
+
+GRADE_NAMES = {"P": "Platinum", "G": "Gold", "S": "Silver", "B": "Bronze", "?": "Unknown"}
+GAME_ACTIVITY_KINDS = {"session", "trophy"}
+
+
+def format_playtime(seconds):
+    seconds = max(0, int(seconds))
+    hours, remainder = divmod(seconds, 3600)
+    minutes = remainder // 60
+    if hours:
+        return tr("{} h {} m").format(hours, minutes)
+    if minutes:
+        return tr("{} m").format(minutes)
+    return tr("Less than a minute")
 
 PORT_DIR = LAUNCHER_DIR.parent  # native_probe (or the package's copy)
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
@@ -62,6 +84,18 @@ DATA_DIR = Path(os.environ.get("BB_DATA_DIR", PORT_DIR))
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "bbport-launcher"
 CONFIG_FILE = CONFIG_DIR / "settings.json"
 MAX_LOG_LINES = 5000
+VERSION = "1.10.7"
+REPO_URL = "https://github.com/NotBhan/bloodborne_pc_notbhan"
+ISSUES_URL = f"{REPO_URL}/issues"
+THEME_FILE = LAUNCHER_DIR / "theme.css"
+
+
+def activity_path():
+    return CONFIG_FILE.parent / "activity.json"
+
+
+def log_path():
+    return CONFIG_FILE.parent / "launcher.log"
 
 # Choices: (native display label, value). Default is English ("en").
 UI_LANGUAGES = [
@@ -73,18 +107,6 @@ UI_LANGUAGES = [
     ("日本語", "ja"),
 ]
 
-UI_SCALE_OPTIONS = [
-    ("100% (Default)", "100"),
-    ("125%", "125"),
-    ("150%", "150"),
-]
-
-THEME_OPTIONS = [
-    ("Dark (Default)", "dark"),
-    ("Midnight Charcoal", "charcoal"),
-    ("Blood Moon", "blood_moon"),
-]
-
 CONTROL_SCHEMES = [
     ("ПК — клавиатура и мышь", "pc"),
     ("Геймпад Xbox", "xbox"),
@@ -92,17 +114,132 @@ CONTROL_SCHEMES = [
 ]
 
 UPSCALERS = [
-    ("FSR 4 [Experimental ⚠️]", "fsr4"),
-    ("FSR 4.1.1 [Experimental ⚠️]", "fsr411"),
-    ("FSR 3.1 [Рекомендуется]", "fsr3"),
-    ("DLSS (NVIDIA GeForce RTX)", "dlss"),
-    ("TAA (нативное сглаживание)", "taa"),
-    ("Выключен", "off"),
+    ("FSR 4 (Experimental)", "fsr4"),
+    ("FSR 4.1.1 (Experimental)", "fsr411"),
+    ("FSR 3.1 (Recommended)", "fsr3"),
+    ("DLSS (RTX)", "dlss"),
+    ("TAA (native anti-aliasing)", "taa"),
+    ("Off", "off"),
 ]
 
 PRESETS = [("Native AA", 0), ("Quality (x1.5)", 1), ("Balanced (x1.7)", 2),
            ("Performance (x2)", 3), ("Ultra Performance (x3)", 4)]
 PRESET_SCALES = [1.0, 1.5, 1.7, 2.0, 3.0]
+
+# The runtime's bindings (src/input_bindings.c): key_<action>=<SDL key>, <mouse input>.
+# One key and one mouse input per action; "none" leaves an action unbound.
+KEY_BINDING_SECTIONS = [
+    ("Movement", (
+        ("move_forward", "Move Forward", "W", ""),
+        ("move_back", "Move Back", "S", ""),
+        ("move_left", "Move Left", "A", ""),
+        ("move_right", "Move Right", "D", ""),
+        ("walk", "Walk", "Left Alt", ""),
+        ("look_up", "Look Up", "I", ""),
+        ("look_down", "Look Down", "K", ""),
+        ("look_left", "Look Left", "J", ""),
+        ("look_right", "Look Right", "L", ""),
+        ("roll", "Dodge / Sprint", "Space", ""),
+        ("lock_on", "Lock On", "Q", ""),
+    )),
+    ("Combat and items", (
+        ("attack", "Attack", "", "Mouse1"),
+        ("strong_attack", "Strong Attack", "V", ""),
+        ("strong_modifier", "Strong Attack Modifier", "Left Shift", ""),
+        ("transform", "Transform", "C", "Mouse3"),
+        ("firearm", "Firearm / Parry", "X", "Mouse2"),
+        ("blood_vial", "Blood Vial", "R", ""),
+        ("use_item", "Use Item", "F", ""),
+        ("interact", "Interact", "E", ""),
+    )),
+    ("Menus and switching", (
+        ("switch_item", "Switch Item", "Down", ""),
+        ("switch_right", "Switch Right Weapon", "Right", ""),
+        ("switch_left", "Switch Left Weapon", "Left", ""),
+        ("dpad_up", "D-pad Up", "Up", ""),
+        ("gestures", "Gestures", "G", ""),
+        ("personal_effects", "Personal Effects", "T", ""),
+        ("menu", "Menu", "Escape", ""),
+        ("confirm", "Menu Confirm", "Return", ""),
+        ("back", "Menu Back", "Backspace", ""),
+        ("l3", "Left Stick Press", "Left Ctrl", ""),
+    )),
+]
+KEY_BINDING_SPECS = tuple(spec for _section, specs in KEY_BINDING_SECTIONS for spec in specs)
+KEY_BINDING_BY_ACTION = {spec[0]: spec for spec in KEY_BINDING_SPECS}
+MOUSE_TOKEN_NAMES = {
+    "mouse1": "Mouse1", "mouse2": "Mouse2", "mouse3": "Mouse3", "mouse4": "Mouse4",
+    "mouse5": "Mouse5", "wheelup": "WheelUp", "wheeldown": "WheelDown",
+}
+SDL_KEY_NAMES = {
+    "Escape": "Escape", "Return": "Return", "KP_Enter": "Keypad Enter",
+    "BackSpace": "Backspace", "Tab": "Tab", "ISO_Left_Tab": "Tab", "space": "Space",
+    "Caps_Lock": "CapsLock", "Print": "PrintScreen", "Scroll_Lock": "ScrollLock",
+    "Pause": "Pause", "Insert": "Insert", "Delete": "Delete", "Home": "Home",
+    "End": "End", "Page_Up": "PageUp", "Page_Down": "PageDown", "Up": "Up",
+    "Down": "Down", "Left": "Left", "Right": "Right", "Num_Lock": "Numlock",
+    "Menu": "Menu", "KP_Add": "Keypad +", "KP_Subtract": "Keypad -",
+    "KP_Multiply": "Keypad *", "KP_Divide": "Keypad /", "KP_Decimal": "Keypad .",
+    "KP_Equal": "Keypad =", "KP_Space": "Keypad Space",
+    "Shift_L": "Left Shift", "Shift_R": "Right Shift",
+    "Control_L": "Left Ctrl", "Control_R": "Right Ctrl",
+    "Alt_L": "Left Alt", "Alt_R": "Right Alt",
+    "Super_L": "Left GUI", "Super_R": "Right GUI",
+    "Meta_L": "Left GUI", "Meta_R": "Right GUI",
+    "Hyper_L": "Left GUI", "Hyper_R": "Right GUI",
+    "ISO_Level3_Shift": "Right Alt",
+}
+SHIFTED_KEYS = {
+    "!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6", "&": "7",
+    "*": "8", "(": "9", ")": "0", ":": ";", "\"": "'", "<": ",", ">": ".",
+    "?": "/", "{": "[", "}": "]", "|": "\\", "+": "=", "_": "-", "~": "`",
+}
+SDL_PUNCTUATION = set("-=[]\\#;'`,./")
+
+
+def parse_key_binding(raw, default_key="", default_mouse=""):
+    """Read key_<action> the way the runtime does; None means the defaults apply."""
+    if raw is None:
+        return default_key, default_mouse
+    key, mouse = "", ""
+    for part in str(raw).split(","):
+        token = part.strip()
+        if not token or token.lower() == "none":
+            continue
+        mouse_name = MOUSE_TOKEN_NAMES.get(token.lower())
+        if mouse_name:
+            mouse = mouse_name
+        else:
+            key = token
+    return key, mouse
+
+
+def format_key_binding(key, mouse):
+    parts = [part for part in (key, mouse) if part]
+    return ", ".join(parts) if parts else "none"
+
+
+def sdl_key_name(keyval):
+    """GDK keyval to the SDL scancode name bbport.ini expects."""
+    name = Gdk.keyval_name(keyval)
+    if name in SDL_KEY_NAMES:
+        return SDL_KEY_NAMES[name]
+    if name and len(name) > 1 and name[0] == "F" and name[1:].isdigit():
+        return name
+    if name and name.startswith("KP_") and name[3:].isdigit():
+        return f"Keypad {name[3:]}"
+    char = Gdk.keyval_to_unicode(keyval)
+    if char:
+        value = chr(char)
+        if value.isascii() and value.isalpha():
+            return value.upper()
+        if value.isdigit():
+            return value
+        if value in SHIFTED_KEYS:
+            return SHIFTED_KEYS[value]
+        if value in SDL_PUNCTUATION:
+            return value
+    return None
 
 
 def compute_internal_resolution(output_res_str, preset_idx, custom_render_res=None):
@@ -218,12 +355,6 @@ DEFAULTS = {
     "gpu_profile": False,
     "vk_validation": False,
     "extra_env": "",
-    "start_minimized": False,
-    "close_to_tray": True,
-    "check_updates": True,
-    "show_confirmation": False,
-    "ui_scale": "100",
-    "theme": "dark",
     "reduce_motion": False,
 }
 
@@ -244,11 +375,10 @@ INI_DEFAULTS = {
 }
 
 BOOL_SETTINGS = {"mods_enabled", "fullscreen", "hdr", "mangohud", "precompile_shaders",
-                 "discord_rpc", "frame_stats", "gpu_profile", "vk_validation", "start_minimized",
-                 "close_to_tray", "check_updates", "show_confirmation", "reduce_motion"}
+                 "discord_rpc", "frame_stats", "gpu_profile", "vk_validation", "reduce_motion"}
 STRING_SETTINGS = {"ui_language", "control_scheme", "game_dir", "user_dir", "mods_dir", "patches_dir",
                     "language", "player_name", "dlc_dir", "present_mode", "fps_mode",
-                    "draw_pipe", "readbacks", "extra_env", "ui_scale", "theme"}
+                    "draw_pipe", "readbacks", "extra_env"}
 
 
 def setting_value(key, value):
@@ -383,12 +513,25 @@ def patches_dir(settings):
     return Path(settings.get("patches_dir") or DATA_DIR / "patches").expanduser()
 
 
+def game_info(path):
+    """(title, version) from the game's param.sfo, or None when it cannot be read."""
+    game = Path(path)
+    try:
+        from prepare import sfo
+        values = sfo((game / "sce_sys" / "param.sfo").read_bytes())
+    except (OSError, ValueError, ImportError):
+        return None
+    title = str(values.get("TITLE") or values.get("TITLE_ID") or "Bloodborne")
+    version = str(values.get("APP_VER") or values.get("VERSION") or "")
+    return title, version
+
+
 def game_environment(s):
     """Environment for run.sh from the launcher settings."""
     env = dict(os.environ)
     env["BB_GAME_DIR"] = str(Path(s["game_dir"]).expanduser())
-    if s["user_dir"]:
-        env["BB_USER_DIR"] = str(Path(s["user_dir"]).expanduser())
+    env["BB_USER_DIR"] = str(Path(s["user_dir"]).expanduser() if s["user_dir"]
+                             else DATA_DIR / "user")
     if s.get("player_name", "").strip():
         env["BB_USER_NAME"] = s["player_name"].strip()
     if s.get("dlc_dir", "").strip():
@@ -517,354 +660,26 @@ def expand_preferences_page(page, max_size=1150, tightening_threshold=900):
     walk(page)
 
 
-GOTHIC_CSS = b"""
-/* Victorian Gothic Bloodborne Theme - Editorial Desktop Software */
-window.gothic-window, .gothic-window {
-    background-color: #0c0d12;
-    color: #ede8df;
-}
-
-headerbar.gothic-header {
-    background-color: #0f1016;
-    border-bottom: 1px solid #1c1d27;
-    min-height: 48px;
-    padding-left: 8px;
-    padding-right: 8px;
-}
-
-/* Shell Brand */
-.shell-brand-title {
-    font-family: 'Cinzel', 'Garamond', 'Times New Roman', 'Noto Serif', serif;
-    font-size: 13px;
-    font-weight: 800;
-    letter-spacing: 2px;
-    color: #ede8df;
-}
-
-.shell-brand-subtitle {
-    font-size: 10px;
-    letter-spacing: 1px;
-    color: #8c867a;
-    text-transform: uppercase;
-}
-
-/* Shell Play Button */
-.shell-play-button {
-    background: linear-gradient(180deg, #7c1818 0%, #521010 100%);
-    color: #fff5f0;
-    border: 1px solid #992424;
-    border-radius: 4px;
-    font-weight: 700;
-    font-size: 13px;
-    letter-spacing: 0.5px;
-    padding: 6px 16px;
-    transition: all 150ms ease;
-}
-
-.shell-play-button:hover {
-    background: linear-gradient(180deg, #941f1f 0%, #631414 100%);
-    border-color: #b82e2e;
-}
-
-.shell-play-button.running {
-    background: linear-gradient(180deg, #3d1414 0%, #260c0c 100%);
-    border-color: #7a2222;
-    color: #ffcccc;
-}
-
-.shell-play-button.running:hover {
-    background: linear-gradient(180deg, #571c1c 0%, #361111 100%);
-    border-color: #9e2a2a;
-}
-
-/* Navigation ViewSwitcher */
-viewswitcher {
-    background: transparent;
-}
-
-viewswitcher button {
-    border-radius: 4px;
-    color: #9c978d;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 6px 9px;
-    margin-left: 2px;
-    margin-right: 2px;
-    border-bottom: 2px solid transparent;
-    transition: all 150ms ease;
-}
-
-viewswitcher button:hover {
-    color: #ede8df;
-    background-color: rgba(255, 255, 255, 0.04);
-}
-
-viewswitcher button:checked,
-viewswitcher > stack > box > button:checked {
-    color: #ffffff;
-    background-color: #211215;
-    border-bottom: 2px solid #8c1d1d;
-}
-
-/* Hero Section */
-.hero-box {
-    background-color: #0c0d12;
-    border: 1px solid #1c1d27;
-    border-radius: 6px;
-}
-
-.hero-overlay-scrim {
-    background: linear-gradient(90deg, rgba(12, 13, 18, 0.96) 0%, rgba(12, 13, 18, 0.8) 32%, rgba(12, 13, 18, 0.25) 55%, transparent 75%);
-    padding: 24px 28px;
-}
-
-.hero-title {
-    font-family: 'Cinzel', 'Garamond', 'Times New Roman', 'Noto Serif', serif;
-    font-size: 34px;
-    font-weight: 800;
-    letter-spacing: 2px;
-    color: #f5f2eb;
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
-}
-
-.hero-subtitle-caps {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 3px;
-    color: #a8a296;
-}
-
-.hero-flourish {
-    border-top: 1px solid #7c1818;
-    margin-top: 4px;
-    margin-bottom: 4px;
-}
-
-.hero-quote {
-    font-size: 13px;
-    font-style: italic;
-    color: #b8b2a6;
-}
-
-.hero-launch-button {
-    font-family: 'Cinzel', 'Garamond', 'Times New Roman', 'Noto Serif', serif;
-    font-size: 14px;
-    font-weight: 800;
-    letter-spacing: 1.5px;
-    padding: 10px 24px;
-    border-radius: 4px;
-    transition: all 150ms ease;
-}
-
-.hero-launch-button.ready {
-    background: linear-gradient(180deg, #7c1818 0%, #4e0f0f 100%);
-    color: #fff5f0;
-    border: 1px solid #992828;
-    box-shadow: 0 4px 14px rgba(124, 24, 24, 0.35);
-}
-
-.hero-launch-button.ready:hover {
-    background: linear-gradient(180deg, #961d1d 0%, #611313 100%);
-    border-color: #c93636;
-    box-shadow: 0 6px 18px rgba(150, 29, 29, 0.5);
-}
-
-.hero-launch-button.running {
-    background: linear-gradient(180deg, #3d1414 0%, #260c0c 100%);
-    color: #ffcccc;
-    border: 1px solid #7a2222;
-}
-
-.hero-launch-button.running:hover {
-    background: linear-gradient(180deg, #571c1c 0%, #361111 100%);
-    border-color: #9e2a2a;
-}
-
-.hero-status-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #ede8df;
-}
-
-.hero-status-sub {
-    font-size: 11px;
-    color: #8c867a;
-}
-
-/* Info Strip */
-.info-strip {
-    background-color: #0f1016;
-    border: 1px solid #1c1d27;
-    border-radius: 6px;
-    padding: 12px 16px;
-}
-
-.info-col {
-    padding: 2px 14px;
-}
-
-.info-icon {
-    color: #8c867a;
-}
-
-.info-col-title {
-    font-size: 10.5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: #8c867a;
-}
-
-.info-col-value {
-    font-size: 12.5px;
-    font-weight: 500;
-    color: #ede8df;
-}
-
-.info-col-sep {
-    background-color: #1c1d27;
-    min-width: 1px;
-}
-
-/* Lower Section */
-.section-header-title {
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    color: #ede8df;
-}
-
-.terminal-activity-box {
-    background-color: #090a0e;
-    border: 1px solid #1a1b24;
-    border-radius: 6px;
-    padding: 12px 16px;
-    min-height: 160px;
-}
-
-.terminal-activity-text {
-    font-family: 'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', monospace;
-    font-size: 11.5px;
-    line-height: 1.6;
-    color: #a39e93;
-}
-
-.quick-actions-list {
-    background-color: #0f1016;
-    border: 1px solid #1c1d27;
-    border-radius: 6px;
-}
-
-.quick-action-row {
-    background: transparent;
-    border-bottom: 1px solid #1a1b25;
-    border-radius: 0;
-    padding: 0;
-    transition: background-color 150ms ease;
-}
-
-.quick-action-row.is-last {
-    border-bottom: none;
-}
-
-.quick-action-row:hover {
-    background-color: #171822;
-}
-
-.action-icon {
-    color: #8c867a;
-}
-
-.action-row-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #ede8df;
-}
-
-.action-row-desc {
-    font-size: 11.5px;
-    color: #8c867a;
-}
-
-.action-chevron {
-    color: #6e6a62;
-}
-
-/* Preferences & Row styling */
-preferencespage > scrolledwindow > viewport > box {
-    margin-top: 16px;
-    margin-bottom: 24px;
-}
-
-preferencesgroup > box {
-    margin-bottom: 22px;
-}
-
-preferencesgroup .boxed-list {
-    background-color: #0f1016;
-    border: 1px solid #1c1d27;
-    border-radius: 6px;
-    box-shadow: none;
-}
-
-preferencesgroup .boxed-list > row {
-    border-bottom: 1px solid #1a1b25;
-}
-
-preferencesgroup .boxed-list > row:last-child {
-    border-bottom: none;
-}
-
-preferencesgroup > box > label.title {
-    font-family: 'Cinzel', 'Garamond', 'Times New Roman', 'Noto Serif', serif;
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    color: #ede8df;
-    margin-bottom: 4px;
-}
-
-preferencesgroup > box > label.subtitle {
-    font-size: 12px;
-    color: #8c867a;
-    margin-bottom: 10px;
-}
-
-switch:checked {
-    background-color: #8c1d1d;
-}
-
-/* Diagnostic Terminal Log */
-.log-page-container {
-    padding: 16px 20px 20px 20px;
-    background-color: #0c0d12;
-}
-
-.log-terminal-frame {
-    background-color: #08090d;
-    border: 1px solid #1c1d27;
-    border-radius: 6px;
-}
-
-.log-terminal-view {
-    font-family: 'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', monospace;
-    font-size: 12px;
-    line-height: 1.5;
-    background-color: transparent;
-    color: #dcd8cf;
-}
-
-.dim-label {
-    color: #807c73;
-}
+FALLBACK_CSS = b"""
+window.bbport-window { background-color: #08090c; color: #f2f2f2; }
+headerbar.ps5-header { background-color: transparent; border: none; box-shadow: none; }
+button.ps5-nav-item { background: transparent; border: none; color: rgba(255,255,255,.6); }
+button.ps5-nav-item.active { color: #fff; border-bottom: 2px solid #fff; }
+button.ps5-play { background-color: #f2f0ec; color: #0a0b0f; border-radius: 999px; }
+.ps5-backdrop-shade { background-color: rgba(8, 9, 12, 0.72); }
+.ps5-info-row { border-bottom: 1px solid rgba(255,255,255,.1); }
 """
 
 
-def install_gothic_theme():
-    """Installs the dark Victorian Gothic CSS styling."""
+def install_theme():
+    """Installs the launcher's restrained dark theme from theme.css."""
+    try:
+        css = THEME_FILE.read_bytes()
+    except OSError:
+        css = FALLBACK_CSS
     try:
         provider = Gtk.CssProvider()
-        provider.load_from_data(GOTHIC_CSS)
+        provider.load_from_data(css)
         display = Gdk.Display.get_default() if hasattr(Gdk, "Display") else None
         if display:
             Gtk.StyleContext.add_provider_for_display(
@@ -880,9 +695,10 @@ def install_gothic_theme():
 class LauncherWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="Bloodborne")
-        self.set_default_size(820, 840)
-        self.add_css_class("gothic-window")
-        install_gothic_theme()
+        self.set_default_size(1180, 760)
+        self.set_size_request(900, 600)
+        self.add_css_class("bbport-window")
+        install_theme()
         self.settings = load_settings()
         set_language(self.settings.get("ui_language") or "en")
         self.ini, self.ini_lines = load_ini()
@@ -891,39 +707,78 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.stream = None
         self.downloading_fsr4 = False
         self.precompiling = False
+        self.launch_state = "idle"
+        self.log_entries = []
+        self.trophies = None
+        self.session_started_at = None
+        self._seen_trophy_ids = None
+        self._trophy_poll_source = None
+        self.settings_category = ""
         self.build()
         self.connect("close-request", self.on_close)
 
     def build(self):
-        """(Re)creates the window's content in the current launcher language."""
-        prev_page = self.stack.get_visible_child_name() if hasattr(self, "stack") and self.stack.get_visible_child_name() else "home"
-
+        """(Re)creates the PS5-style shell in the current language."""
+        prev_page = (self.stack.get_visible_child_name()
+                     if hasattr(self, "stack") and self.stack.get_visible_child_name()
+                     else "details")
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
-        header.add_css_class("gothic-header")
+        header.add_css_class("ps5-header")
 
-        # Shell brand on the left
-        brand_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        brand_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         brand_box.set_valign(Gtk.Align.CENTER)
-        brand_box.set_margin_start(12)
-        brand_box.set_margin_end(12)
-        brand_title = Gtk.Label(label="BLOODBORNE", xalign=0)
-        brand_title.add_css_class("shell-brand-title")
-        brand_sub = Gtk.Label(label=tr("Linux Port"), xalign=0)
-        brand_sub.add_css_class("shell-brand-subtitle")
+        brand_box.add_css_class("ps5-brand")
+        mark = PORT_DIR / "launcher" / "assets" / "hunter-icon.png"
+        if not mark.is_file():
+            mark = LAUNCHER_DIR / "assets" / "hunter-icon.png"
+        if mark.is_file():
+            brand_mark = self.square_picture(mark, 28)
+            if brand_mark is not None:
+                brand_mark.add_css_class("ps5-brand-mark")
+                brand_box.append(brand_mark)
+        brand_title = Gtk.Label(label="Bloodborne", xalign=0)
+        brand_title.add_css_class("ps5-brand-title")
         brand_box.append(brand_title)
-        brand_box.append(brand_sub)
         header.pack_start(brand_box)
 
-        self.stack = Adw.ViewStack()
-        switcher = Adw.ViewSwitcher(stack=self.stack, policy=Adw.ViewSwitcherPolicy.WIDE)
-        header.set_title_widget(switcher)
+        self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE,
+                               transition_duration=160, vexpand=True, hexpand=True)
+        self.stack.add_css_class("ps5-shell")
 
-        self.launch_button = Gtk.Button()
-        self.launch_button.add_css_class("shell-play-button")
-        self.launch_button.set_margin_end(6)
-        self.launch_button.connect("clicked", self.on_launch)
-        header.pack_end(self.launch_button)
+        nav = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=26)
+        nav.add_css_class("ps5-nav")
+        self.nav_buttons = {}
+        for key, label in (("details", tr("Game Details")),
+                           ("trophies", tr("Trophies")),
+                           ("settings", tr("Settings"))):
+            button = Gtk.Button(label=label)
+            button.add_css_class("ps5-nav-item")
+            button.set_tooltip_text(label)
+            if key == "settings":
+                button.connect("clicked", lambda _button: self.show_settings_menu())
+            else:
+                button.connect("clicked", lambda _button, name=key: self.show_page(name))
+            self.nav_buttons[key] = button
+            nav.append(button)
+        header.set_title_widget(nav)
+
+        self.shell_status_dot = Gtk.Box()
+        self.shell_status_dot.add_css_class("ps5-status-dot")
+        self.shell_status_dot.set_size_request(7, 7)
+        self.shell_status_dot.set_halign(Gtk.Align.CENTER)
+        self.shell_status_dot.set_valign(Gtk.Align.CENTER)
+        self.shell_status_label = Gtk.Label(label=tr("Ready"))
+        self.shell_status_label.add_css_class("ps5-status-text")
+        status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        status_box.append(self.shell_status_dot)
+        status_box.append(self.shell_status_label)
+        self.shell_status_button = Gtk.Button()
+        self.shell_status_button.add_css_class("ps5-status")
+        self.shell_status_button.set_child(status_box)
+        self.shell_status_button.set_tooltip_text(tr("Game Details"))
+        self.shell_status_button.connect("clicked", lambda _button: self.show_page("details"))
+        header.pack_end(self.shell_status_button)
         toolbar.add_top_bar(header)
 
         self.toasts = Adw.ToastOverlay()
@@ -931,307 +786,1293 @@ class LauncherWindow(Adw.ApplicationWindow):
         toolbar.set_content(self.toasts)
         self.set_content(toolbar)
 
-        log_text = self.log_view.get_buffer().get_text(
-            *self.log_view.get_buffer().get_bounds(), False) if hasattr(self, "log_view") else ""
-
-        # Navigation: 6 core pages
         self.pages = {
-            "home": self.build_home_page(),
-            "graphics": self.build_graphics_page(),
-            "game": self.build_game_page(),
-            "downloads": self.build_downloads_page(),
-            "settings": self.build_settings_page(),
-            "log": self.build_log_page(),
+            "details": self.build_details_page(),
+            "trophies": self.build_trophies_page(),
+            "settings": self.build_settings_shell(),
         }
-        self.stack.add_titled_with_icon(self.pages["home"], "home", tr("Главная"),
-                                        "user-home-symbolic")
-        self.stack.add_titled_with_icon(self.pages["graphics"], "graphics", tr("Графика"),
-                                        "video-display-symbolic")
-        self.stack.add_titled_with_icon(self.pages["game"], "game", tr("Игра"),
-                                        "applications-games-symbolic")
-        self.stack.add_titled_with_icon(self.pages["downloads"], "downloads", tr("Загрузки"),
-                                        "folder-download-symbolic")
-        self.stack.add_titled_with_icon(self.pages["settings"], "settings", tr("Настройки"),
-                                        "preferences-system-symbolic")
-        self.stack.add_titled_with_icon(self.pages["log"], "log", tr("Журнал"),
-                                        "utilities-terminal-symbolic")
+        for key, page in self.pages.items():
+            self.stack.add_named(page, key)
+        requested_page = os.environ.get("BB_LAUNCHER_PAGE")
+        if requested_page in self.pages:
+            prev_page = requested_page
+        requested_category = os.environ.get("BB_LAUNCHER_CATEGORY")
+        if requested_category in getattr(self, "settings_category_pages", {}):
+            self.settings_category = requested_category
+            prev_page = "settings"
+        self.stack.connect("notify::visible-child", self.on_page_changed)
 
-        if prev_page in self.pages:
-            self.stack.set_visible_child_name(prev_page)
+        self.stack.set_visible_child_name(prev_page if prev_page in self.pages else "details")
+        if self.stack.get_visible_child_name() == "settings":
+            if getattr(self, "settings_category", "") in getattr(
+                    self, "settings_category_pages", {}):
+                self.show_settings_category(self.settings_category)
+            else:
+                self.show_settings_menu()
+        self.on_page_changed(self.stack, None)
+        self.set_reduce_motion(bool(self.settings.get("reduce_motion", False)))
+        self.refresh_log_view()
+        self.refresh_details()
+        self.refresh_trophies()
+        self.update_shell_status()
 
-        self.log_view.get_buffer().set_text(log_text)
-        self.update_launch_button()
+    def show_page(self, name):
+        if name in getattr(self, "pages", {}):
+            self.stack.set_visible_child_name(name)
+
+    def show_settings_menu(self):
+        self.settings_category = ""
+        self.show_page("settings")
+        if hasattr(self, "settings_view_stack"):
+            self.settings_view_stack.set_visible_child_name("menu")
+
+    def show_settings_category(self, category):
+        if category not in getattr(self, "settings_category_pages", {}):
+            category = "display"
+        self.settings_category = category
+        self.show_page("settings")
+        if hasattr(self, "settings_view_stack"):
+            self.settings_view_stack.set_visible_child_name("category")
+        if hasattr(self, "settings_category_stack"):
+            self.settings_category_stack.set_visible_child_name(category)
+        if hasattr(self, "settings_category_title"):
+            self.settings_category_title.set_text(
+                self.settings_category_labels.get(category, category))
+
+    def on_page_changed(self, _stack, _param):
+        visible = self.stack.get_visible_child_name()
+        for key, button in getattr(self, "nav_buttons", {}).items():
+            button.remove_css_class("active")
+            if key == visible:
+                button.add_css_class("active")
+        if visible == "trophies":
+            self.refresh_trophies()
+        elif visible == "details":
+            self.refresh_details()
+        elif visible == "settings" and hasattr(self, "settings_view_stack"):
+            if not getattr(self, "settings_category", ""):
+                self.settings_view_stack.set_visible_child_name("menu")
+
+    def update_shell_status(self):
+        if not hasattr(self, "shell_status_label"):
+            return
+        ok = bool(self.settings.get("game_dir")) and (self.game_dir() / "eboot.bin").is_file()
+        if self.launch_state == "running":
+            text, state = tr("Running"), "running"
+        elif self.launch_state in ("starting", "stopping"):
+            text, state = tr("Starting…") if self.launch_state == "starting" else tr("Stopping…"), "running"
+        elif ok:
+            text, state = tr("Ready"), "ready"
+        else:
+            text, state = tr("Game not found"), "error"
+        self.shell_status_label.set_text(text)
+        for name in ("ready", "running", "error"):
+            self.shell_status_dot.remove_css_class(name)
+        self.shell_status_dot.add_css_class(state)
+        if hasattr(self, "hero_status_dot"):
+            for name in ("ready", "running", "error"):
+                self.hero_status_dot.remove_css_class(name)
+            self.hero_status_dot.add_css_class(state)
+
+
+    # --- Shared page helpers -------------------------------------------------------------
+
+    def page_scroller(self, content):
+        scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
+        scroller.add_css_class("page-scroller")
+        scroller.set_child(content)
+        return scroller
+
+    def page_content(self):
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        content.add_css_class("page-content")
+        return content
+
+    def text_label(self, text, css_class=None, xalign=0, wrap=False):
+        label = Gtk.Label(label=text, xalign=xalign)
+        if css_class:
+            label.add_css_class(css_class)
+        if wrap:
+            label.set_wrap(True)
+            label.set_max_width_chars(96)
+        return label
+
+    def text_link(self, text, callback):
+        button = Gtk.Button(label=text)
+        button.add_css_class("text-link")
+        button.connect("clicked", lambda _button: callback())
+        return button
+
+    def activity_row(self, event):
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        row.add_css_class("activity-row")
+        stamp = datetime.fromtimestamp(event["time"]).strftime("%H:%M")
+        row.append(self.text_label(stamp, "activity-time"))
+        row.append(self.text_label(event["text"], "activity-text", wrap=True))
+        return row
+
+    def square_picture(self, path, size):
+        """A fixed-size square image, center-cropped without stretching."""
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(str(path))
+            width, height = pixbuf.get_width(), pixbuf.get_height()
+            side = min(width, height)
+            pixbuf = pixbuf.new_subpixbuf((width - side) // 2, (height - side) // 2,
+                                          side, side)
+            pixbuf = pixbuf.scale_simple(size, size, GdkPixbuf.InterpType.BILINEAR)
+            image = Gtk.Image.new_from_pixbuf(pixbuf)
+            image.set_pixel_size(size)
+            image.set_size_request(size, size)
+            return image
+        except (GLib.Error, ValueError):
+            return None
+
+    def ps5_info_row(self, label_text, value_attr):
+        """A PS5 information-screen row: quiet label left, light value right."""
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=24)
+        row.add_css_class("ps5-info-row")
+        label = self.text_label(label_text, "ps5-info-label")
+        label.set_valign(Gtk.Align.CENTER)
+        row.append(label)
+        value = self.text_label("", "ps5-info-value")
+        value.set_hexpand(True)
+        value.set_halign(Gtk.Align.END)
+        value.set_xalign(1.0)
+        value.set_ellipsize(Pango.EllipsizeMode.END)
+        setattr(self, value_attr, value)
+        row.append(value)
+        return row
+
+    def make_readiness_row(self, label_text):
+        row = Adw.ActionRow(title=label_text)
+        icon = Gtk.Image()
+        icon.set_from_icon_name("dialog-information-symbolic")
+        row.add_prefix(icon)
+        self.readiness_rows[label_text] = row
+        self.readiness_icons[label_text] = icon
+        return row
+
+    def clear_box(self, box):
+        child = box.get_first_child() if hasattr(box, "get_first_child") else None
+        while child:
+            next_child = child.get_next_sibling()
+            box.remove(child)
+            child = next_child
+
+    # --- Game Details --------------------------------------------------------------------
+
+    def build_details_page(self):
+        """Full-bleed PS5 game information screen with the Play action."""
+        page = Gtk.Overlay()
+        page.add_css_class("ps5-screen")
+
+        artwork = LAUNCHER_DIR / "art" / "hero.png"
+        if not artwork.is_file():
+            artwork = PORT_DIR / "launcher" / "art" / "hero.png"
+        if artwork.is_file():
+            picture = Gtk.Picture.new_for_filename(str(artwork))
+            picture.set_content_fit(Gtk.ContentFit.COVER)
+            picture.set_hexpand(True)
+            picture.set_vexpand(True)
+            picture.add_css_class("ps5-backdrop-art")
+            page.set_child(picture)
+        else:
+            fallback = Gtk.Box()
+            fallback.add_css_class("ps5-backdrop-fallback")
+            page.set_child(fallback)
+
+        shade = Gtk.Box()
+        shade.add_css_class("ps5-backdrop-shade")
+        page.add_overlay(shade)
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        content.add_css_class("ps5-details-content")
+
+        content.append(self.text_label(tr("Game Details"), "ps5-screen-eyebrow"))
+
+        main = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=38)
+        main.add_css_class("ps5-details-main")
+
+        tile = Gtk.Box()
+        tile.add_css_class("ps5-game-tile")
+        tile.set_size_request(214, 214)
+        tile.set_halign(Gtk.Align.START)
+        tile.set_valign(Gtk.Align.START)
+        tile.set_hexpand(False)
+        tile.set_vexpand(False)
+        icon_path = PORT_DIR / "launcher" / "assets" / "hunter-icon.png"
+        if not icon_path.is_file():
+            icon_path = LAUNCHER_DIR / "assets" / "hunter-icon.png"
+        tile_art = self.square_picture(icon_path, 214) if icon_path.is_file() else None
+        if tile_art is not None:
+            tile_art.add_css_class("ps5-game-tile-art")
+            tile.append(tile_art)
+        else:
+            tile.append(self.text_label("B", "ps5-tile-fallback"))
+        main.append(tile)
+
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        right.set_hexpand(True)
+        right.append(self.text_label("Bloodborne", "ps5-game-title"))
+        right.append(self.text_label(f"{tr('NATIVE LINUX PORT')} · {VERSION}",
+                                     "ps5-game-subtitle"))
+
+        action_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
+        action_row.add_css_class("ps5-game-actions")
+        self.hero_launch_button = Gtk.Button()
+        self.hero_launch_button.add_css_class("ps5-play")
+        self.hero_launch_button.connect("clicked", self.on_launch)
+        self.launch_button = self.hero_launch_button
+        action_row.append(self.hero_launch_button)
+        secondary = self.text_link(tr("Choose game folder"),
+                                   lambda: self.show_settings_category("game_data"))
+        secondary.add_css_class("ps5-secondary-action")
+        action_row.append(secondary)
+
+        status = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+        status.add_css_class("ps5-game-status")
+        status.set_valign(Gtk.Align.CENTER)
+        self.hero_status_dot = Gtk.Box()
+        self.hero_status_dot.add_css_class("ps5-status-dot")
+        self.hero_status_dot.set_size_request(8, 8)
+        self.hero_status_dot.set_halign(Gtk.Align.CENTER)
+        self.hero_status_dot.set_valign(Gtk.Align.CENTER)
+        status.append(self.hero_status_dot)
+        status_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        self.hero_status_label = self.text_label("", "ps5-status-title")
+        self.hero_status_detail = self.text_label("", "ps5-status-detail")
+        status_text.append(self.hero_status_label)
+        status_text.append(self.hero_status_detail)
+        status.append(status_text)
+        action_row.append(status)
+        right.append(action_row)
+
+        info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        info.add_css_class("ps5-info-table")
+        info.append(self.ps5_info_row(tr("Game files"), "hero_game_summary"))
+        info.append(self.ps5_info_row(tr("Play time"), "hero_playtime_summary"))
+        info.append(self.ps5_info_row(tr("Graphics profile"), "hero_graphics_summary"))
+        info.append(self.ps5_info_row(tr("Trophies"), "hero_trophy_summary"))
+        info.append(self.ps5_info_row(tr("Save data"), "hero_hunter_summary"))
+        info.append(self.ps5_info_row(tr("FSR 4 assets"), "hero_assets_summary"))
+        right.append(info)
+        self.hero_fsr_summary = self.hero_assets_summary
+
+        snapshot = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        snapshot.add_css_class("ps5-details-trophy-strip")
+        self.details_trophy_progress = Gtk.ProgressBar()
+        self.details_trophy_progress.add_css_class("ps5-progress")
+        self.details_trophy_progress.set_show_text(False)
+        self.details_trophy_progress.set_hexpand(True)
+        snapshot.append(self.details_trophy_progress)
+        snapshot_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        self.details_trophy_count = self.text_label("", "ps5-trophy-count")
+        self.details_trophy_meta = self.text_label("", "ps5-meta", wrap=True)
+        snapshot_row.append(self.details_trophy_count)
+        snapshot_row.append(self.details_trophy_meta)
+        snap_spacer = Gtk.Box()
+        snap_spacer.set_hexpand(True)
+        snapshot_row.append(snap_spacer)
+        snapshot_row.append(self.text_link(tr("View all trophies"),
+                                           lambda: self.show_page("trophies")))
+        snapshot.append(snapshot_row)
+        right.append(snapshot)
+        main.append(right)
+        content.append(main)
+
+        activity = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        activity.add_css_class("ps5-activity-block")
+        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        head.append(self.text_label(tr("Recent activity"), "ps5-section-title"))
+        head.append(self.text_link(tr("Open diagnostics"),
+                                   lambda: self.show_settings_category("diagnostics")))
+        activity.append(head)
+        self.activity_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.activity_list.add_css_class("ps5-activity-list")
+        self.activity_label = self.text_label("", "ps5-meta", wrap=True)
+        self.activity_list.append(self.activity_label)
+        activity.append(self.activity_list)
+        content.append(activity)
+
+        scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
+        scroller.add_css_class("ps5-scroll")
+        scroller.set_child(content)
+        page.add_overlay(scroller)
+        return page
+
+    def refresh_details(self):
+        if not hasattr(self, "hero_game_summary"):
+            return
         self.update_game_status()
         self.update_user_status()
         self.update_dlc_status()
         self.update_upscaler_status()
+        self.refresh_fsr4_status()
+        self.update_playtime_summary()
         self.update_recent_activity()
+        self.update_trophy_snapshot()
+        self.refresh_readiness()
+        self.update_shell_status()
 
-    # --- 1. Home page --------------------------------------------------------------------
+    # --- Trophies ------------------------------------------------------------------------
 
-    def build_home_page(self):
-        scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-        box.set_margin_top(14)
-        box.set_margin_bottom(20)
-        box.set_margin_start(16)
-        box.set_margin_end(16)
-
-        # Hero Banner with artwork
-        self.hero_box = hero_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.hero_box.add_css_class("hero-box")
-        hero_overlay = Gtk.Overlay()
-
-        hero_art = LAUNCHER_DIR / "art" / "hero.png"
-        if not hero_art.is_file():
-            hero_art = PORT_DIR / "launcher" / "art" / "hero.png"
-
-        if hero_art.is_file():
-            picture = Gtk.Picture.new_for_filename(str(hero_art))
+    def build_trophies_page(self):
+        """PS5 trophy screen: summary header, filter, and large rounded rows."""
+        page = Gtk.Overlay()
+        page.add_css_class("ps5-screen")
+        art = PORT_DIR / "launcher" / "art" / "strip.png"
+        if art.is_file():
+            picture = Gtk.Picture.new_for_filename(str(art))
             picture.set_content_fit(Gtk.ContentFit.COVER)
-            picture.set_size_request(-1, 350)
-            hero_overlay.set_child(picture)
+            picture.set_hexpand(True)
+            picture.set_vexpand(True)
+            picture.add_css_class("ps5-backdrop-art")
+            page.set_child(picture)
         else:
             fallback = Gtk.Box()
-            fallback.set_size_request(-1, 350)
-            fallback.add_css_class("hero-box")
-            hero_overlay.set_child(fallback)
+            fallback.add_css_class("ps5-backdrop-fallback")
+            page.set_child(fallback)
+        shade = Gtk.Box()
+        shade.add_css_class("ps5-backdrop-shade")
+        shade.add_css_class("ps5-trophy-shade")
+        page.add_overlay(shade)
 
-        scrim = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        scrim.add_css_class("hero-overlay-scrim")
-        scrim.set_valign(Gtk.Align.END)
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        content.add_css_class("ps5-trophies-content")
+        content.append(self.text_label(tr("Trophies"), "ps5-screen-eyebrow"))
 
-        title = Gtk.Label(label="BLOODBORNE")
-        title.add_css_class("hero-title")
-        title.set_halign(Gtk.Align.START)
-        scrim.append(title)
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+        header.add_css_class("ps5-trophy-header")
+        icon_path = PORT_DIR / "launcher" / "assets" / "hunter-icon.png"
+        if not icon_path.is_file():
+            icon_path = LAUNCHER_DIR / "assets" / "hunter-icon.png"
+        game_icon = self.square_picture(icon_path, 64) if icon_path.is_file() else None
+        if game_icon is not None:
+            game_icon.add_css_class("ps5-game-icon")
+            header.append(game_icon)
+        identity = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        identity.set_valign(Gtk.Align.CENTER)
+        self.trophy_game_title = self.text_label("Bloodborne", "ps5-game-title")
+        self.trophy_subtitle = self.text_label(tr("Trophies"), "ps5-game-subtitle")
+        identity.append(self.trophy_game_title)
+        identity.append(self.trophy_subtitle)
+        header.append(identity)
 
-        subtitle = Gtk.Label(label=tr("NATIVE LINUX PORT"))
-        subtitle.add_css_class("hero-subtitle-caps")
-        subtitle.set_halign(Gtk.Align.START)
-        scrim.append(subtitle)
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        header.append(spacer)
 
-        flourish = Gtk.Box()
-        flourish.add_css_class("hero-flourish")
-        flourish.set_size_request(60, 2)
-        flourish.set_halign(Gtk.Align.START)
-        scrim.append(flourish)
+        progress_block = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        progress_block.add_css_class("ps5-trophy-stat")
+        progress_block.append(self.text_label(tr("Progress"), "ps5-stat-label"))
+        self.trophy_percent_label = self.text_label("", "ps5-stat-value")
+        progress_block.append(self.trophy_percent_label)
+        self.trophy_progress = Gtk.ProgressBar()
+        self.trophy_progress.add_css_class("ps5-progress")
+        self.trophy_progress.set_show_text(False)
+        self.trophy_progress.set_size_request(132, -1)
+        progress_block.append(self.trophy_progress)
+        header.append(progress_block)
 
-        quote = Gtk.Label(label=tr("Hunt your nightmares."))
-        quote.add_css_class("hero-quote")
-        quote.set_halign(Gtk.Align.START)
-        scrim.append(quote)
+        earned_block = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        earned_block.add_css_class("ps5-trophy-stat")
+        earned_block.append(self.text_label(tr("Earned"), "ps5-stat-label"))
+        self.trophy_count_label = self.text_label("", "ps5-stat-value")
+        earned_block.append(self.trophy_count_label)
+        header.append(earned_block)
 
-        action_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
-        action_row.set_margin_top(10)
+        self.trophy_grade_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        self.trophy_grade_box.add_css_class("ps5-grade-summary")
+        self.trophy_grade_box.set_valign(Gtk.Align.END)
+        header.append(self.trophy_grade_box)
+        self.trophy_progress_block = progress_block
+        self.trophy_earned_block = earned_block
+        self.trophy_summary_note = self.text_label(tr("Trophy details unavailable"),
+                                                  "ps5-meta")
+        self.trophy_summary_note.set_valign(Gtk.Align.CENTER)
+        header.append(self.trophy_summary_note)
+        content.append(header)
 
-        self.hero_launch_button = Gtk.Button()
-        self.hero_launch_button.add_css_class("hero-launch-button")
-        self.hero_launch_button.connect("clicked", self.on_launch)
-        action_row.append(self.hero_launch_button)
+        self.trophy_local_note = self.text_label("", "ps5-meta", wrap=True)
+        content.append(self.trophy_local_note)
+        self.trophy_warning = self.text_label("", "ps5-warning", wrap=True)
+        self.trophy_warning.set_visible(False)
+        content.append(self.trophy_warning)
 
-        status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        status_box.set_valign(Gtk.Align.CENTER)
-        self.hero_status_icon = Gtk.Image()
-        self.hero_status_icon.set_from_icon_name("emblem-ok-symbolic")
+        subheader = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        subheader.add_css_class("ps5-trophy-subheader")
+        self.trophy_all_label = self.text_label("", "ps5-meta")
+        subheader.append(self.trophy_all_label)
+        sub_spacer = Gtk.Box()
+        sub_spacer.set_hexpand(True)
+        subheader.append(sub_spacer)
 
-        status_text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        self.hero_status_label = Gtk.Label(label="", xalign=0)
-        self.hero_status_label.add_css_class("hero-status-title")
-        self.hero_status_detail = Gtk.Label(label="", xalign=0)
-        self.hero_status_detail.add_css_class("hero-status-sub")
-        status_text_box.append(self.hero_status_label)
-        status_text_box.append(self.hero_status_detail)
+        self.trophy_sort_values = ["default", "grade", "recent"]
+        self.trophy_sort = "default"
+        self.trophy_sort_button = Gtk.MenuButton()
+        self.trophy_sort_button.add_css_class("ps5-sort")
+        self.trophy_sort_label = Gtk.Label(label=tr("Sort by: {}").format(tr("Game Default")))
+        self.trophy_sort_button.set_child(self.trophy_sort_label)
+        sort_popover = Gtk.Popover()
+        sort_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        for value, label in (("default", tr("Game Default")), ("grade", tr("Grade")),
+                             ("recent", tr("Recently earned"))):
+            choice = Gtk.Button(label=label)
+            choice.add_css_class("ps5-popover-item")
+            choice.connect("clicked", lambda _b, v=value: self.set_trophy_sort(v))
+            sort_box.append(choice)
+        sort_popover.set_child(sort_box)
+        self.trophy_sort_button.set_popover(sort_popover)
+        subheader.append(self.trophy_sort_button)
+        content.append(subheader)
 
-        status_box.append(self.hero_status_icon)
-        status_box.append(status_text_box)
-        action_row.append(status_box)
+        body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        body.set_vexpand(True)
+        body.add_css_class("ps5-trophy-body")
 
-        scrim.append(action_row)
-        hero_overlay.add_overlay(scrim)
-        hero_box.append(hero_overlay)
-        box.append(hero_box)
+        self.trophy_filter_values = ["all", "earned", "locked"]
+        self.trophy_filter = "all"
+        self.trophy_filter_button = Gtk.MenuButton()
+        self.trophy_filter_button.set_icon_name("view-filter-symbolic")
+        self.trophy_filter_button.add_css_class("ps5-filter")
+        self.trophy_filter_button.set_valign(Gtk.Align.START)
+        self.trophy_filter_button.set_tooltip_text(tr("Filter"))
+        filter_popover = Gtk.Popover()
+        filter_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        for value, label in (("all", tr("All")), ("earned", tr("Earned")),
+                             ("locked", tr("Locked"))):
+            choice = Gtk.Button(label=label)
+            choice.add_css_class("ps5-popover-item")
+            choice.connect("clicked", lambda _b, v=value: self.set_trophy_filter(v))
+            filter_box.append(choice)
+        filter_popover.set_child(filter_box)
+        self.trophy_filter_button.set_popover(filter_popover)
+        body.append(self.trophy_filter_button)
 
-        # Sleek Horizontal Info Strip (4 columns)
-        info_strip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-        info_strip.add_css_class("info-strip")
-        info_strip.set_hexpand(True)
+        self.trophy_content_stack = Gtk.Stack()
+        self.trophy_content_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.trophy_content_stack.set_transition_duration(120)
+        self.trophy_content_stack.set_vexpand(True)
+        self.trophy_content_stack.set_hexpand(True)
 
-        # Col 1: Game Files
-        col1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        col1.add_css_class("info-col")
-        col1.set_hexpand(True)
-        c1_icon = Gtk.Image.new_from_icon_name("applications-games-symbolic")
-        c1_icon.set_pixel_size(24)
-        c1_icon.add_css_class("info-icon")
-        col1.append(c1_icon)
-        c1_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-        c1_title = Gtk.Label(label=tr("Game Files"), xalign=0)
-        c1_title.add_css_class("info-col-title")
-        self.hero_game_summary = Gtk.Label(label="", xalign=0)
-        self.hero_game_summary.add_css_class("info-col-value")
-        c1_box.append(c1_title)
-        c1_box.append(self.hero_game_summary)
-        col1.append(c1_box)
-        info_strip.append(col1)
+        self.trophy_list = Gtk.ListBox()
+        self.trophy_list.add_css_class("ps5-trophy-list")
+        self.trophy_list.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.trophy_list.set_vexpand(True)
+        list_scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
+        list_scroller.add_css_class("ps5-scroll")
+        list_scroller.set_child(self.trophy_list)
+        self.trophy_content_stack.add_named(list_scroller, "list")
 
-        sep1 = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
-        sep1.add_css_class("info-col-sep")
-        sep1.set_size_request(1, -1)
-        sep1.set_hexpand(False)
-        info_strip.append(sep1)
+        self.trophy_empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.trophy_empty.add_css_class("ps5-empty")
+        self.trophy_empty.set_halign(Gtk.Align.CENTER)
+        self.trophy_empty.set_valign(Gtk.Align.CENTER)
+        self.trophy_empty_title = self.text_label("", "ps5-empty-title")
+        self.trophy_empty_title.set_halign(Gtk.Align.CENTER)
+        self.trophy_empty_body = self.text_label("", "ps5-meta", xalign=0.5, wrap=True)
+        self.trophy_empty_body.set_halign(Gtk.Align.CENTER)
+        self.trophy_empty_body.set_max_width_chars(64)
+        self.trophy_empty.append(self.trophy_empty_title)
+        self.trophy_empty.append(self.trophy_empty_body)
+        empty_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        empty_actions.set_halign(Gtk.Align.CENTER)
+        open_data = Gtk.Button(label=tr("Open Game & Data"))
+        open_data.add_css_class("ps5-button")
+        open_data.connect("clicked", lambda _b: self.show_settings_category("game_data"))
+        import_keys = Gtk.Button(label=tr("Import keys.json"))
+        import_keys.add_css_class("ps5-button-primary")
+        import_keys.connect("clicked", self.on_import_trophy_keys)
+        empty_actions.append(open_data)
+        empty_actions.append(import_keys)
+        self.trophy_empty.append(empty_actions)
+        self.trophy_content_stack.add_named(self.trophy_empty, "empty")
+        body.append(self.trophy_content_stack)
+        content.append(body)
+        page.add_overlay(content)
+        return page
 
-        # Col 2: Graphics Profile
-        col2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        col2.add_css_class("info-col")
-        col2.set_hexpand(True)
-        c2_icon = Gtk.Image.new_from_icon_name("video-display-symbolic")
-        c2_icon.set_pixel_size(24)
-        c2_icon.add_css_class("info-icon")
-        col2.append(c2_icon)
-        c2_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-        c2_title = Gtk.Label(label=tr("Graphics Profile"), xalign=0)
-        c2_title.add_css_class("info-col-title")
-        self.hero_graphics_summary = Gtk.Label(label="", xalign=0)
-        self.hero_graphics_summary.add_css_class("info-col-value")
-        c2_box.append(c2_title)
-        c2_box.append(self.hero_graphics_summary)
-        col2.append(c2_box)
-        info_strip.append(col2)
+    def set_trophy_filter(self, value):
+        self.trophy_filter = value
+        if hasattr(self, "trophy_filter_button"):
+            self.trophy_filter_button.set_tooltip_text(
+                tr("Filter") + ": " + {"all": tr("All"), "earned": tr("Earned"),
+                                       "locked": tr("Locked")}.get(value, tr("All")))
+        self.refresh_trophies()
 
-        sep2 = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
-        sep2.add_css_class("info-col-sep")
-        sep2.set_size_request(1, -1)
-        sep2.set_hexpand(False)
-        info_strip.append(sep2)
+    def set_trophy_sort(self, value):
+        self.trophy_sort = value
+        labels = {"default": tr("Game Default"), "grade": tr("Grade"),
+                  "recent": tr("Recently earned")}
+        if hasattr(self, "trophy_sort_label"):
+            self.trophy_sort_label.set_text(
+                tr("Sort by: {}").format(labels.get(value, tr("Game Default"))))
+        self.refresh_trophies()
 
-        # Col 3: FSR 4 Assets
-        col3 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        col3.add_css_class("info-col")
-        col3.set_hexpand(True)
-        c3_icon = Gtk.Image.new_from_icon_name("drive-harddisk-symbolic")
-        c3_icon.set_pixel_size(24)
-        c3_icon.add_css_class("info-icon")
-        col3.append(c3_icon)
-        c3_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-        c3_title = Gtk.Label(label=tr("FSR 4 Assets"), xalign=0)
-        c3_title.add_css_class("info-col-title")
-        self.hero_assets_summary = Gtk.Label(label="", xalign=0)
-        self.hero_assets_summary.add_css_class("info-col-value")
-        self.hero_fsr_summary = self.hero_assets_summary
-        c3_box.append(c3_title)
-        c3_box.append(self.hero_assets_summary)
-        col3.append(c3_box)
-        info_strip.append(col3)
+    def refresh_trophies(self):
+        if not hasattr(self, "trophy_list"):
+            return
+        report = load_trophy_report(
+            self.user_dir(), self.game_dir() if self.settings.get("game_dir") else None)
+        self.trophies = report
+        self._record_new_trophies(report)
+        available = report.metadata_available
+        self.trophy_game_title.set_text(report.set_title or "Bloodborne")
+        self.trophy_progress.set_visible(available)
+        self.trophy_progress.set_fraction((report.completion or 0) / 100)
+        self.trophy_filter_button.set_visible(available)
+        self.trophy_sort_button.set_visible(available)
+        self.trophy_progress_block.set_visible(available)
+        self.trophy_earned_block.set_visible(available)
+        self.trophy_grade_box.set_visible(available)
+        self.trophy_summary_note.set_visible(not available)
+        self.clear_box(self.trophy_grade_box)
+        if available:
+            self.trophy_count_label.set_text(f"{report.earned}/{report.total}")
+            self.trophy_percent_label.set_text(f"{report.completion}%")
+            self.trophy_all_label.set_text(tr("All trophies: {}").format(report.total))
+            for grade in ("P", "G", "S", "B"):
+                badge = self.text_label(
+                    grade, f"ps5-grade ps5-grade-{grade}")
+                badge.set_valign(Gtk.Align.CENTER)
+                count = self.text_label(str(report.grade_counts.get(grade, 0)),
+                                        "ps5-grade-count")
+                pair = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+                pair.append(badge)
+                pair.append(count)
+                self.trophy_grade_box.append(pair)
+            self.trophy_local_note.set_text(
+                tr("Local records from this port. Not synced to PlayStation Network."))
+        else:
+            self.trophy_count_label.set_text("—")
+            self.trophy_percent_label.set_text("—")
+            self.trophy_all_label.set_text("")
+            self.trophy_local_note.set_text(
+                tr("{} local unlocks recorded.").format(report.local_unlocks))
 
-        sep3 = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
-        sep3.add_css_class("info-col-sep")
-        sep3.set_size_request(1, -1)
-        sep3.set_hexpand(False)
-        info_strip.append(sep3)
+        stale = report.stale and available
+        self.trophy_warning.set_visible(stale)
+        if stale:
+            self.trophy_warning.set_text(
+                tr("Cached trophy data is older than the current trophy pack."))
 
-        # Col 4: Save Data / Hunter
-        col4 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        col4.add_css_class("info-col")
-        col4.set_hexpand(True)
-        c4_icon = Gtk.Image.new_from_icon_name("x-office-document-symbolic")
-        c4_icon.set_pixel_size(24)
-        c4_icon.add_css_class("info-icon")
-        col4.append(c4_icon)
-        c4_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-        c4_title = Gtk.Label(label=tr("Save Data"), xalign=0)
-        c4_title.add_css_class("info-col-title")
-        self.hero_hunter_summary = Gtk.Label(label="", xalign=0)
-        self.hero_hunter_summary.add_css_class("info-col-value")
-        c4_box.append(c4_title)
-        c4_box.append(self.hero_hunter_summary)
-        col4.append(c4_box)
-        info_strip.append(col4)
+        self.trophy_content_stack.set_visible_child_name("list" if available else "empty")
+        if not available:
+            self.trophy_empty_title.set_text(
+                tr("No trophy data yet") if not report.metadata_complete
+                else tr("Trophy details are not available yet"))
+            body = report.reason or tr("Trophy metadata is unavailable.")
+            if report.local_unlocks:
+                body += "\n" + tr("{} local unlocks recorded.").format(report.local_unlocks)
+            self.trophy_empty_body.set_text(body)
+            self.clear_box(self.trophy_list)
+            self.update_trophy_snapshot()
+            return
 
-        box.append(info_strip)
+        entries = list(report.entries)
+        if self.trophy_filter == "earned":
+            entries = [entry for entry in entries if entry.earned]
+        elif self.trophy_filter == "locked":
+            entries = [entry for entry in entries if not entry.earned]
+        if self.trophy_sort == "grade":
+            entries.sort(key=lambda entry: (GRADE_ORDER.get(entry.grade, 4), entry.id))
+        elif self.trophy_sort == "recent":
+            entries.sort(key=lambda entry: (0 if entry.earned else 1,
+                                            -(entry.unlocked_at or 0), entry.id))
+        self.clear_box(self.trophy_list)
+        groups = []
+        if self.trophy_filter != "locked":
+            groups.append((tr("Unlocked"), [entry for entry in entries if entry.earned]))
+        if self.trophy_filter != "earned":
+            groups.append((tr("Locked"), [entry for entry in entries if not entry.earned]))
+        shown = 0
+        for title, group in groups:
+            if not group:
+                continue
+            self.trophy_list.append(self.make_trophy_section_row(title, len(group)))
+            for entry in group:
+                self.trophy_list.append(self.make_trophy_row(entry))
+                shown += 1
+        if not shown:
+            empty_row = Gtk.ListBoxRow()
+            empty_row.set_activatable(False)
+            empty_row.set_selectable(False)
+            empty_row.set_child(self.text_label(tr("No trophies match this filter."),
+                                               "ps5-meta"))
+            self.trophy_list.append(empty_row)
+        self.update_trophy_snapshot()
 
-        # Lower 2-column section: Recent Activity & Quick Actions
-        lower_grid = Gtk.Grid()
-        lower_grid.set_column_spacing(16)
-        lower_grid.set_hexpand(True)
-        lower_grid.set_column_homogeneous(True)
+    def make_trophy_section_row(self, title, count):
+        row = Gtk.ListBoxRow()
+        row.set_activatable(False)
+        row.set_selectable(False)
+        row.add_css_class("ps5-trophy-section")
+        line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        line.append(self.text_label(f"{title} ({count})", "ps5-trophy-section-title"))
+        row.set_child(line)
+        return row
 
-        # Left Column: Recent Activity
-        left_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        left_box.set_hexpand(True)
-        act_title = Gtk.Label(label=tr("Recent Activity"), xalign=0)
-        act_title.add_css_class("section-header-title")
-        left_box.append(act_title)
+    def make_trophy_row(self, entry):
+        row = Gtk.ListBoxRow()
+        row.add_css_class("ps5-trophy-row")
+        row.set_activatable(False)
+        row.set_selectable(False)
+        row.add_css_class("earned" if entry.earned else "locked")
+        line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
+        line.add_css_class("ps5-trophy-row-line")
 
-        self.activity_frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.activity_frame.add_css_class("terminal-activity-box")
-        self.activity_label = Gtk.Label(xalign=0, yalign=0)
-        self.activity_label.add_css_class("terminal-activity-text")
-        self.activity_frame.append(self.activity_label)
-        left_box.append(self.activity_frame)
-        lower_grid.attach(left_box, 0, 0, 1, 1)
+        icon_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        icon_box.set_size_request(54, 54)
+        icon_box.add_css_class("ps5-trophy-icon")
+        icon_box.add_css_class(f"ring-{entry.grade}" if entry.grade in GRADES else "ring-unknown")
+        icon_box.set_valign(Gtk.Align.CENTER)
+        if entry.icon is not None:
+            picture = Gtk.Picture.new_for_filename(str(entry.icon))
+            picture.set_content_fit(Gtk.ContentFit.COVER)
+            picture.set_size_request(52, 52)
+            icon_box.append(picture)
+        else:
+            fallback = self.text_label("?" if entry.grade == "?" else entry.grade,
+                                       "ps5-trophy-icon-fallback")
+            fallback.set_halign(Gtk.Align.CENTER)
+            fallback.set_valign(Gtk.Align.CENTER)
+            icon_box.append(fallback)
+        line.append(icon_box)
 
-        # Right Column: Quick Actions
-        right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        right_box.set_hexpand(True)
-        qa_title = Gtk.Label(label=tr("Quick Actions"), xalign=0)
-        qa_title.add_css_class("section-header-title")
-        right_box.append(qa_title)
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        body.set_hexpand(True)
+        body.set_valign(Gtk.Align.CENTER)
+        secret = entry.hidden and not entry.earned
+        name_label = self.text_label(tr("Secret trophy") if secret else entry.name,
+                                     "ps5-trophy-name")
+        name_label.set_ellipsize(Pango.EllipsizeMode.END)
+        body.append(name_label)
+        grade_line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=7)
+        grade = entry.grade if entry.grade in GRADES else "?"
+        badge = self.text_label(grade, f"ps5-grade ps5-grade-{grade}"
+                                if grade in GRADES else "ps5-grade ps5-grade-unknown")
+        grade_line.append(badge)
+        grade_line.append(self.text_label(
+            tr(GRADE_NAMES.get(grade, "Unknown")), "ps5-trophy-state"))
+        body.append(grade_line)
+        line.append(body)
 
-        qa_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        qa_list.add_css_class("quick-actions-list")
+        meta = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        meta.add_css_class("ps5-trophy-detail")
+        meta.set_size_request(330, -1)
+        meta.set_valign(Gtk.Align.CENTER)
+        if entry.earned and entry.unlocked_at:
+            try:
+                stamp = datetime.fromtimestamp(entry.unlocked_at).strftime("%d/%m/%Y %H:%M")
+            except (OSError, OverflowError, ValueError):
+                stamp = tr("Unknown date")
+            meta.append(self.text_label(tr("Unlocked {}").format(stamp), "ps5-trophy-date"))
+        elif entry.earned:
+            meta.append(self.text_label(tr("Earned locally"), "ps5-trophy-date"))
+        else:
+            meta.append(self.text_label(tr("Not earned locally"), "ps5-trophy-date"))
+        if secret:
+            meta.append(self.text_label(tr("Hidden until earned"), "ps5-trophy-description"))
+        elif entry.description:
+            description = self.text_label(entry.description, "ps5-trophy-description", wrap=True)
+            description.set_lines(2)
+            description.set_ellipsize(Pango.EllipsizeMode.END)
+            meta.append(description)
+        line.append(meta)
+        row.set_child(line)
+        return row
 
-        def make_action_row(icon_name, title_text, desc_text, target_page, is_last=False):
-            btn = Gtk.Button()
-            btn.add_css_class("quick-action-row")
-            if is_last:
-                btn.add_css_class("is-last")
-            btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
-            btn_box.set_margin_start(14)
-            btn_box.set_margin_end(14)
-            btn_box.set_margin_top(10)
-            btn_box.set_margin_bottom(10)
+    def update_trophy_snapshot(self):
+        if not hasattr(self, "details_trophy_count"):
+            return
+        report = self.trophies
+        if report and report.metadata_available:
+            summary = tr("{} of {} trophies").format(report.earned, report.total)
+            self.details_trophy_count.set_text(summary)
+            self.details_trophy_meta.set_text(f"{report.completion}% · " + tr("Local records only"))
+            self.details_trophy_progress.set_fraction((report.completion or 0) / 100)
+            self.hero_trophy_summary.set_text(f"{summary} · {report.completion}%")
+        else:
+            self.details_trophy_count.set_text(tr("Trophy details unavailable"))
+            local = report.local_unlocks if report else 0
+            self.details_trophy_meta.set_text(
+                tr("{} local unlocks recorded.").format(local))
+            self.details_trophy_progress.set_fraction(0)
+            self.hero_trophy_summary.set_text(
+                tr("{} local unlocks recorded.").format(local))
 
+
+
+    # --- Settings ------------------------------------------------------------------------
+
+    def category_page(self, *groups):
+        page = Adw.PreferencesPage()
+        for group in groups:
+            if group is None:
+                continue
+            if group.get_parent() is not None:
+                group.unparent()
+            page.add(group)
+        expand_preferences_page(page, max_size=1040, tightening_threshold=860)
+        return page
+
+    def build_settings_shell(self):
+        self.build_graphics_page()
+        self.build_game_page()
+        self.build_downloads_page()
+        self.keybinding_rows = {}
+        self.keybinding_groups = [
+            self.build_keybinding_group(section, specs, with_note=(index == 0))
+            for index, (section, specs) in enumerate(KEY_BINDING_SECTIONS)
+        ]
+        self.keybinding_reset_group = self.build_keybinding_reset_group()
+
+        for row in (getattr(self, "validation_row", None), getattr(self, "extra_row", None)):
+            if row is not None:
+                if row.get_parent() is not None:
+                    self.perf_group.remove(row)
+                self.compat_group.add(row)
+        if hasattr(self, "discord_row") and self.discord_row.get_parent() is not None:
+            self.perf_group.remove(self.discord_row)
+        integrations = Adw.PreferencesGroup(
+            title=tr("Integrations"),
+            description=tr("Optional runtime integrations."))
+        if hasattr(self, "discord_row"):
+            integrations.add(self.discord_row)
+
+        self.render_group.set_title(tr("Output and presentation"))
+        self.render_group.set_description(tr("Output resolution, HDR and frame presentation."))
+        self.quality_group.set_title(tr("Image quality"))
+        self.quality_group.set_description(tr("Sharpening, model detail and image effects."))
+        self.upscale_group.set_title(tr("Reconstruction"))
+        self.upscale_group.set_description(
+            tr("Preset, reconstruction, FSR assets and motion vectors."))
+        self.compat_group.set_title(tr("Vulkan pipeline"))
+        self.compat_group.set_description(tr("Vulkan pipeline options and runtime overrides."))
+        self.perf_group.set_title(tr("Frame pacing"))
+        self.perf_group.set_description(tr("Frame pacing, diagnostics and shader warm-up."))
+        self.game_group.set_title(tr("Game folder"))
+        self.game_group.set_description(tr("Game folder, save data and game language."))
+        self.mods_group.set_title(tr("Mods"))
+        self.patches_group.set_title(tr("Patches"))
+        self.enhancements_group.set_title(tr("Enhancements"))
+        self.cheats_group.set_title(tr("Cheats and tweaks"))
+        self.prompt_group.set_title(tr("Controller and prompts"))
+        if hasattr(self, "fsr_group"):
+            self.fsr_group.set_title(tr("FSR assets"))
+
+        self.readiness_rows = {}
+        self.readiness_icons = {}
+        self.readiness_group = Adw.PreferencesGroup(
+            title=tr("Compatibility status"),
+            description=tr("Read-only checks of the selected game and save folders."))
+        for key in ("Game files", "Trophies", "Saves"):
+            self.readiness_group.add(self.make_readiness_row(key))
+
+        pages = {
+            "display": self.category_page(self.render_group),
+            "graphics": self.category_page(self.quality_group),
+            "upscaling": self.category_page(self.upscale_group),
+            "performance": self.category_page(self.perf_group),
+            "compatibility": self.category_page(self.compat_group, self.readiness_group),
+            "controller": self.category_page(self.controls_group, *self.keybinding_groups,
+                                             self.keybinding_reset_group, self.prompt_group),
+            "game_data": self.category_page(self.game_group, self.mods_group, self.patches_group,
+                                            self.enhancements_group, self.cheats_group),
+            "launcher": self.build_launcher_page(integrations),
+            "diagnostics": self.build_diagnostics_page(),
+        }
+        self.settings_category_pages = pages
+        categories = [
+            ("display", tr("Display"), "video-display-symbolic"),
+            ("graphics", tr("Graphics"), "applications-graphics-symbolic"),
+            ("upscaling", tr("Upscaling"), "image-x-generic-symbolic"),
+            ("performance", tr("Performance"), "speedometer-symbolic"),
+            ("compatibility", tr("Compatibility"), "preferences-system-symbolic"),
+            ("controller", tr("Controller"), "input-gaming-symbolic"),
+            ("game_data", tr("Game & Data"), "folder-open-symbolic"),
+            ("launcher", tr("Launcher"), "applications-system-symbolic"),
+            ("diagnostics", tr("Diagnostics"), "utilities-terminal-symbolic"),
+        ]
+        self.settings_category_values = [key for key, *_ in categories]
+        self.settings_category_labels = {key: label for key, label, _ in categories}
+
+        self.settings_view_stack = Gtk.Stack()
+        self.settings_view_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.settings_view_stack.set_transition_duration(140)
+        self.settings_view_stack.set_vexpand(True)
+        self.settings_view_stack.set_hexpand(True)
+
+        menu = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        menu.add_css_class("ps5-settings-menu")
+        menu.append(self.text_label(tr("Settings"), "ps5-settings-title"))
+        self.settings_category_list = Gtk.ListBox()
+        self.settings_category_list.add_css_class("ps5-settings-categories")
+        self.settings_category_list.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.settings_category_list.connect("row-activated", self.on_settings_category_row)
+        self.settings_category_rows = {}
+        for key, label, icon_name in categories:
+            row = Gtk.ListBoxRow()
+            row.category = key
+            row.add_css_class("ps5-settings-category")
+            row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
             icon = Gtk.Image.new_from_icon_name(icon_name)
-            icon.set_pixel_size(20)
-            icon.add_css_class("action-icon")
-            btn_box.append(icon)
+            icon.set_pixel_size(22)
+            icon.add_css_class("ps5-settings-icon")
+            row_box.append(icon)
+            row_box.append(self.text_label(label, "ps5-settings-label"))
+            row.set_child(row_box)
+            self.settings_category_rows[key] = row
+            self.settings_category_list.append(row)
+        menu.append(self.settings_category_list)
+        menu_scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
+        menu_scroller.add_css_class("ps5-scroll")
+        menu_scroller.set_child(menu)
+        self.settings_view_stack.add_named(menu_scroller, "menu")
 
-            text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-            text_box.set_hexpand(True)
-            t_lbl = Gtk.Label(label=title_text, xalign=0)
-            t_lbl.add_css_class("action-row-title")
-            d_lbl = Gtk.Label(label=desc_text, xalign=0)
-            d_lbl.add_css_class("action-row-desc")
-            text_box.append(t_lbl)
-            text_box.append(d_lbl)
-            btn_box.append(text_box)
+        detail = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        detail.add_css_class("ps5-settings-detail")
+        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        head.add_css_class("ps5-settings-detail-head")
+        back = Gtk.Button()
+        back.add_css_class("ps5-back")
+        back_child = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        back_child.append(Gtk.Image.new_from_icon_name("go-previous-symbolic"))
+        back_child.append(Gtk.Label(label=tr("Settings")))
+        back.set_child(back_child)
+        back.connect("clicked", lambda _b: self.show_settings_menu())
+        head.append(back)
+        self.settings_category_title = self.text_label("", "ps5-settings-category-title")
+        head.append(self.settings_category_title)
+        detail.append(head)
 
-            chevron = Gtk.Image.new_from_icon_name("go-next-symbolic")
-            chevron.add_css_class("action-chevron")
-            btn_box.append(chevron)
+        self.settings_category_stack = Gtk.Stack()
+        self.settings_category_stack.add_css_class("settings-stack")
+        self.settings_category_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.settings_category_stack.set_transition_duration(140)
+        self.settings_category_stack.set_vexpand(True)
+        self.settings_category_stack.set_hexpand(True)
+        for key, _label, _icon in categories:
+            self.settings_category_stack.add_named(pages[key], key)
+        detail.append(self.settings_category_stack)
+        self.settings_save_status = self.text_label("", "ps5-save-status")
+        detail.append(self.settings_save_status)
+        self.settings_view_stack.add_named(detail, "category")
 
-            btn.set_child(btn_box)
-            btn.connect("clicked", lambda _: self.stack.set_visible_child_name(target_page))
-            return btn
+        self.settings_view_stack.set_visible_child_name("menu")
+        self.refresh_readiness()
+        self.wire_setting_saves()
+        return self.settings_view_stack
 
-        qa_list.append(make_action_row("video-display-symbolic", tr("Graphics Settings"),
-                                       tr("Resolution, upscaling, and image quality"), "graphics"))
-        qa_list.append(make_action_row("applications-games-symbolic", tr("Game Settings"),
-                                       tr("Controls, mods, and enhancements"), "game"))
-        qa_list.append(make_action_row("folder-download-symbolic", tr("Manage Downloads"),
-                                       tr("FSR 4 shaders and additional assets"), "downloads"))
-        qa_list.append(make_action_row("preferences-system-symbolic", tr("Application Settings"),
-                                       tr("Language, launcher behavior, and preferences"), "settings", is_last=True))
+    def on_settings_category_row(self, _listbox, row):
+        if row is None or not hasattr(row, "category"):
+            return
+        self.show_settings_category(row.category)
 
-        right_box.append(qa_list)
-        lower_grid.attach(right_box, 1, 0, 1, 1)
+    def select_settings_category(self, category):
+        self.show_settings_category(category)
 
-        box.append(lower_grid)
-        scroller.set_child(box)
-        return scroller
+    def wire_setting_saves(self):
+        """Persist every real control through the debounced saver."""
+        controls = [
+            getattr(self, name, None) for name in (
+                "output_row", "hud_row", "live_row", "fullscreen_row", "present_row",
+                "hdr_row", "upscaler_row", "preset_row", "motion_row", "sharpen_row",
+                "sharpness_row", "lod_row", "pipe_row", "readbacks_row",
+                "frames_ahead_row", "show_fps_row", "fps_row", "limit_row",
+                "mangohud_row", "stats_row", "precompile_row", "discord_row",
+                "profile_row", "validation_row", "extra_row", "language_row",
+                "player_row", "mods_enabled_row", "control_scheme_row")
+        ]
+        controls += list(getattr(self, "effect_rows", {}).values())
+        controls += list(getattr(self, "enhancement_rows", {}).values())
+        controls += list(getattr(self, "cheat_rows", {}).values())
+        for control in controls:
+            if control is None:
+                continue
+            try:
+                if isinstance(control, Adw.SwitchRow):
+                    control.connect("notify::active", lambda *_: self.schedule_save())
+                elif isinstance(control, Adw.SpinRow):
+                    control.connect("notify::value", lambda *_: self.schedule_save())
+                elif isinstance(control, Adw.EntryRow):
+                    control.connect("notify::text", lambda *_: self.schedule_save())
+                elif hasattr(control, "get_selected"):
+                    control.connect("notify::selected", lambda *_: self.schedule_save())
+            except TypeError:
+                pass
 
-    # --- 2. Graphics page ----------------------------------------------------------------
+    def build_keybinding_group(self, title, specs, with_note=False):
+        group = Adw.PreferencesGroup(
+            title=tr(title),
+            description=tr("Rebind keyboard and mouse actions. Applies next launch.")
+            if with_note else "")
+        for action, label, _default_key, _default_mouse in specs:
+            row = Adw.ActionRow(title=tr(label))
+            row.set_subtitle(self.binding_display(action))
+            change = Gtk.Button(label=tr("Change"))
+            change.add_css_class("ps5-secondary-action")
+            change.set_valign(Gtk.Align.CENTER)
+            change.connect("clicked", lambda _b, a=action: self.open_key_capture(a))
+            row.add_suffix(change)
+            group.add(row)
+            self.keybinding_rows[action] = row
+        return group
+
+    def build_keybinding_reset_group(self):
+        group = Adw.PreferencesGroup(title=tr("Key bindings"))
+        row = Adw.ActionRow(
+            title=tr("Reset key bindings"),
+            subtitle=tr("Restore the default keyboard and mouse bindings."))
+        reset = Gtk.Button(label=tr("Reset"))
+        reset.add_css_class("ps5-secondary-action")
+        reset.set_valign(Gtk.Align.CENTER)
+        reset.connect("clicked", self.on_reset_key_bindings)
+        row.add_suffix(reset)
+        group.add(row)
+        return group
+
+    def binding_parts(self, action):
+        spec = KEY_BINDING_BY_ACTION.get(action)
+        if spec is None:
+            return "", ""
+        return parse_key_binding(self.ini.get(f"key_{action}"), spec[2], spec[3])
+
+    def binding_display(self, action):
+        key, mouse = self.binding_parts(action)
+        parts = [part for part in (key, mouse) if part]
+        return " + ".join(parts) if parts else tr("Unbound")
+
+    def refresh_keybinding_rows(self):
+        for action, row in getattr(self, "keybinding_rows", {}).items():
+            row.set_subtitle(self.binding_display(action))
+
+    def save_key_binding(self, action, key, mouse):
+        """Persist one binding, keeping one key and one mouse input per action."""
+        for spec in KEY_BINDING_SPECS:
+            other = spec[0]
+            if other == action:
+                continue
+            other_key, other_mouse = self.binding_parts(other)
+            changed = False
+            if key and other_key.lower() == key.lower():
+                other_key, changed = "", True
+            if mouse and other_mouse.lower() == mouse.lower():
+                other_mouse, changed = "", True
+            if changed:
+                self.ini[f"key_{other}"] = format_key_binding(other_key, other_mouse)
+        self.ini[f"key_{action}"] = format_key_binding(key, mouse)
+        try:
+            save_ini(self.ini, self.ini_lines)
+            self.ini, self.ini_lines = load_ini()
+        except OSError as error:
+            if hasattr(self, "toasts"):
+                self.toasts.add_toast(Adw.Toast(
+                    title=tr("Could not save key binding: {}").format(error)))
+            return
+        self.refresh_keybinding_rows()
+        if hasattr(self, "toasts"):
+            self.toasts.add_toast(
+                Adw.Toast(title=tr("Binding saved. Takes effect next launch.")))
+
+    def on_reset_key_bindings(self, _button=None):
+        self.ini_lines = [line for line in self.ini_lines
+                          if not line.strip().startswith("key_")]
+        for name in [name for name in self.ini if name.startswith("key_")]:
+            self.ini.pop(name, None)
+        try:
+            save_ini(self.ini, self.ini_lines)
+            self.ini, self.ini_lines = load_ini()
+        except OSError as error:
+            if hasattr(self, "toasts"):
+                self.toasts.add_toast(Adw.Toast(
+                    title=tr("Could not save key binding: {}").format(error)))
+            return
+        self.refresh_keybinding_rows()
+        if hasattr(self, "toasts"):
+            self.toasts.add_toast(Adw.Toast(title=tr("Key bindings reset.")))
+
+    def open_key_capture(self, action):
+        spec = KEY_BINDING_BY_ACTION.get(action)
+        if spec is None:
+            return
+        label = tr(spec[1])
+        base_key, base_mouse = self.binding_parts(action)
+
+        dialog = Adw.Window()
+        dialog.set_transient_for(self)
+        dialog.set_modal(True)
+        dialog.set_title(tr("Rebind {}").format(label))
+        dialog.set_default_size(480, 248)
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Adw.WindowTitle(
+            title=tr("Rebind {}").format(label)))
+        toolbar.add_top_bar(header)
+
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        body.set_margin_top(18)
+        body.set_margin_bottom(18)
+        body.set_margin_start(22)
+        body.set_margin_end(22)
+        area = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        area.add_css_class("ps5-rebind-area")
+        area.set_size_request(-1, 96)
+        area.set_focusable(True)
+        area.append(self.text_label(tr("Press a key, mouse button or wheel"),
+                                    "ps5-rebind-hint"))
+        current_label = self.text_label(self.binding_display(action), "ps5-rebind-value")
+        area.append(current_label)
+        body.append(area)
+
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        buttons.set_halign(Gtk.Align.END)
+
+        def finish(key, mouse):
+            dialog.close()
+            self.save_key_binding(action, key, mouse)
+
+        reset = Gtk.Button(label=tr("Reset to default"))
+        reset.connect("clicked", lambda _b: finish(spec[2], spec[3]))
+        clear = Gtk.Button(label=tr("Clear"))
+        clear.connect("clicked", lambda _b: finish("", ""))
+        cancel = Gtk.Button(label=tr("Cancel"))
+        cancel.connect("clicked", lambda _b: dialog.close())
+        buttons.append(reset)
+        buttons.append(clear)
+        buttons.append(cancel)
+        body.append(buttons)
+        toolbar.set_content(body)
+        dialog.set_content(toolbar)
+
+        keys = Gtk.EventControllerKey()
+        keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        def on_key(_controller, keyval, _keycode, _state):
+            name = sdl_key_name(keyval)
+            if name is None:
+                current_label.set_text(tr("Unsupported key"))
+                return True
+            finish(name, base_mouse)
+            return True
+        keys.connect("key-pressed", on_key)
+        dialog.add_controller(keys)
+
+        click = Gtk.GestureClick()
+        click.set_button(0)
+        def on_click(gesture, _n_press, _x, _y):
+            mouse = {1: "Mouse1", 2: "Mouse2", 3: "Mouse3",
+                     4: "Mouse4", 5: "Mouse5", 8: "Mouse4", 9: "Mouse5"}.get(
+                         gesture.get_button())
+            if mouse:
+                finish(base_key, mouse)
+        click.connect("pressed", on_click)
+        area.add_controller(click)
+
+        scroll = Gtk.EventControllerScroll.new(
+            Gtk.EventControllerScrollFlags.VERTICAL | Gtk.EventControllerScrollFlags.HORIZONTAL)
+        def on_scroll(_controller, dx, dy):
+            if dy < 0 or (dy == 0 and dx < 0):
+                finish(base_key, "WheelUp")
+            elif dy > 0 or dx > 0:
+                finish(base_key, "WheelDown")
+            return True
+        scroll.connect("scroll", on_scroll)
+        area.add_controller(scroll)
+
+        dialog.present()
+
+    def build_launcher_page(self, integrations):
+        page = Adw.PreferencesPage()
+        interface = Adw.PreferencesGroup(
+            title=tr("Interface"),
+            description=tr("Language and motion preferences for the launcher."))
+        self.ui_language_row = combo_row(
+            tr("Language"),
+            tr("Applies to the launcher; the game language is set in Game & Data."),
+            UI_LANGUAGES, self.settings.get("ui_language") or "en")
+        self.ui_language_row.connect("notify::selected", self.on_ui_language)
+        interface.add(self.ui_language_row)
+        self.reduce_motion_row = Adw.SwitchRow(
+            title=tr("Reduce motion"),
+            subtitle=tr("Disable non-essential transitions and animations."),
+            active=bool(self.settings.get("reduce_motion", False)))
+        self.reduce_motion_row.connect("notify::active", self.on_reduce_motion)
+        interface.add(self.reduce_motion_row)
+        page.add(interface)
+        page.add(integrations)
+
+        storage = Adw.PreferencesGroup(title=tr("Storage and version"))
+        cfg_row = Adw.ActionRow(title=tr("Configuration directory"), subtitle=str(CONFIG_DIR))
+        cfg_row.set_subtitle_lines(1)
+        cfg_row.add_suffix(flat_button("folder-open-symbolic", tr("Open Folder"),
+                                       lambda _b: open_folder(self, CONFIG_DIR)))
+        storage.add(cfg_row)
+        log_row = Adw.ActionRow(title=tr("Launcher log"), subtitle=str(log_path()))
+        log_row.set_subtitle_lines(1)
+        log_row.add_suffix(flat_button("folder-open-symbolic", tr("Open Folder"),
+                                       lambda _b: self.on_open_log_file(None)))
+        storage.add(log_row)
+        storage.add(Adw.ActionRow(title=tr("Version"), subtitle=VERSION))
+        storage.add(Adw.ActionRow(title=tr("Build"), subtitle="linux-x86_64"))
+        page.add(storage)
+
+        about = Adw.PreferencesGroup(title=tr("About"),
+                                     description=tr("A community-driven native PC port."))
+        for title, uri in ((tr("Project repository"), REPO_URL),
+                           (tr("Report an issue"), ISSUES_URL),
+                           (tr("License"), (PORT_DIR / "LICENSE").as_uri())):
+            row = Adw.ActionRow(title=title)
+            link = Gtk.LinkButton(uri=uri, label=tr("Open"))
+            link.set_valign(Gtk.Align.CENTER)
+            row.add_suffix(link)
+            about.add(row)
+        page.add(about)
+        expand_preferences_page(page, max_size=1040, tightening_threshold=860)
+        return page
+
+    def build_diagnostics_page(self):
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        content.add_css_class("page-content")
+
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        toolbar.add_css_class("diagnostics-toolbar")
+        filters = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.log_search_entry = Gtk.SearchEntry()
+        self.log_search_entry.set_placeholder_text(tr("Search in log…"))
+        self.log_search_entry.set_hexpand(True)
+        self.log_search_entry.connect("search-changed", self.on_log_search)
+        filters.append(self.log_search_entry)
+        filters.append(self.text_label(tr("Level"), "dim-label"))
+        self.log_level_drop = Gtk.DropDown.new_from_strings(
+            [tr("All"), "INFO", "WARNING", "ERROR", "DEBUG"])
+        self.log_level_drop.connect("notify::selected", lambda *_: self.refresh_log_view())
+        filters.append(self.log_level_drop)
+        toolbar.append(filters)
+
+        toggles = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.log_timestamps = Gtk.Switch(active=True)
+        self.log_timestamps.connect("notify::active", lambda *_: self.refresh_log_view())
+        toggles.append(self.text_label(tr("Timestamps"), "dim-label"))
+        toggles.append(self.log_timestamps)
+        self.log_autoscroll = Gtk.Switch(active=True)
+        toggles.append(self.text_label(tr("Auto-scroll"), "dim-label"))
+        toggles.append(self.log_autoscroll)
+        toggles.append(self.text_label(tr("Runtime output from the game and renderer."),
+                                       "dim-label"))
+        toolbar.append(toggles)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        actions.set_halign(Gtk.Align.START)
+        for label, callback in ((tr("Copy"), self.on_copy_log),
+                                (tr("Copy selected"), self.on_copy_selected),
+                                (tr("Clear"), self.on_clear_log),
+                                (tr("Save…"), self.on_save_log),
+                                (tr("Open log"), self.on_open_log_file)):
+            button = Gtk.Button(label=label)
+            button.connect("clicked", callback)
+            actions.append(button)
+        toolbar.append(actions)
+        content.append(toolbar)
+
+        self.log_view = Gtk.TextView(editable=False, monospace=True, cursor_visible=True,
+                                     wrap_mode=Gtk.WrapMode.WORD_CHAR)
+        self.log_view.set_top_margin(10)
+        self.log_view.set_left_margin(12)
+        self.log_view.set_right_margin(12)
+        self.log_view.set_bottom_margin(10)
+        self.log_view.set_pixels_above_lines(1)
+        self.log_view.set_pixels_below_lines(1)
+        self.log_view.add_css_class("log-terminal-view")
+        self.log_view.get_buffer().create_tag("log-info", foreground="#c6c0b5")
+        self.log_view.get_buffer().create_tag("log-warning", foreground="#c3a877")
+        self.log_view.get_buffer().create_tag("log-error", foreground="#c47a7a")
+        self.log_view.get_buffer().create_tag("log-debug", foreground="#8f897e")
+        self.log_view.get_buffer().connect("notify::cursor-position", self.on_log_cursor)
+        self.log_scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
+        self.log_scroller.add_css_class("log-terminal-frame")
+        self.log_scroller.set_child(self.log_view)
+        content.append(self.log_scroller)
+
+        detail = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        detail.add_css_class("log-detail")
+        self.log_detail_time = self.text_label("—", "log-detail-value")
+        self.log_detail_level = self.text_label("—", "log-detail-value")
+        self.log_detail_text = self.text_label("", "log-detail-value", wrap=True)
+        self.log_detail_text.set_hexpand(True)
+        detail.append(self.text_label(tr("Selected line"), "log-detail-label"))
+        detail.append(self.log_detail_time)
+        detail.append(self.log_detail_level)
+        detail.append(self.log_detail_text)
+        content.append(detail)
+        return content
+
+    def on_reduce_motion(self, row, _param):
+        self.set_reduce_motion(row.get_active())
+        self.schedule_save()
+
+    def set_reduce_motion(self, reduce):
+        self.settings["reduce_motion"] = bool(reduce)
+        if reduce:
+            self.add_css_class("reduce-motion")
+        else:
+            self.remove_css_class("reduce-motion")
+        try:
+            gtk_settings = Gtk.Settings.get_default()
+            if gtk_settings is not None:
+                gtk_settings.set_property("gtk-enable-animations", not reduce)
+        except Exception:
+            pass
+
+    def schedule_save(self):
+        if getattr(self, "_save_source", None):
+            try:
+                GLib.source_remove(self._save_source)
+            except Exception:
+                pass
+        self._save_source = GLib.timeout_add(250, self.save_now)
+        if hasattr(self, "settings_save_status"):
+            self.settings_save_status.set_text(tr("Saving…"))
+            self.settings_save_status.remove_css_class("error")
+
+    def save_now(self):
+        self._save_source = None
+        try:
+            self.store()
+        except Exception as error:
+            if hasattr(self, "settings_save_status"):
+                self.settings_save_status.set_text(tr("Save failed"))
+                self.settings_save_status.add_css_class("error")
+            if hasattr(self, "toasts"):
+                self.toasts.add_toast(Adw.Toast(
+                    title=tr("Could not save settings: {}").format(error)))
+            return False
+        if hasattr(self, "settings_save_status"):
+            self.settings_save_status.set_text(tr("Saved"))
+            self.settings_save_status.remove_css_class("error")
+        return False
+
+    def refresh_readiness(self):
+        if not hasattr(self, "readiness_rows"):
+            return
+        try:
+            rows = check_readiness(self.settings.get("game_dir") or None, self.user_dir(), game_info)
+        except (OSError, ValueError, TypeError):
+            rows = []
+        by_label = {item.get("label"): item for item in rows if isinstance(item, dict)}
+        for label, row in self.readiness_rows.items():
+            item = by_label.get(label)
+            if item is None:
+                row.set_subtitle(tr("Not checked"))
+                continue
+            level = item.get("level", "warning")
+            icon_name = "object-select-symbolic" if level == "ready" else (
+                "dialog-error-symbolic" if level == "error" else "dialog-warning-symbolic")
+            icon = getattr(self, "readiness_icons", {}).get(label)
+            if icon is not None:
+                icon.set_from_icon_name(icon_name)
+            row.set_subtitle(item.get("detail", ""))
+
+    # --- Settings control groups ---------------------------------------------------------
 
     def build_graphics_page(self):
         page = Adw.PreferencesPage()
@@ -1297,6 +2138,9 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.fsr4_button.connect("clicked", self.on_fetch_fsr4)
         self.fsr4_row.add_suffix(self.fsr4_progress)
         self.fsr4_row.add_suffix(self.fsr4_button)
+        self.fsr4_row.add_suffix(flat_button(
+            "system-file-manager-symbolic", tr("Открыть в файловом менеджере"),
+            lambda _button: open_folder(self, PORT_DIR / "fsr4_shaders")))
         upscaler.add(self.fsr4_row)
 
         self.motion_row = Adw.SwitchRow(
@@ -1414,13 +2258,13 @@ class LauncherWindow(Adw.ApplicationWindow):
         expand_preferences_page(page, max_size=1150)
         return page
 
-    # --- 3. Game page --------------------------------------------------------------------
-
     def build_game_page(self):
         page = Adw.PreferencesPage()
 
         game = Adw.PreferencesGroup(title=tr("Игра"))
+        self.game_group = game
         self.game_row = Adw.ActionRow(title=tr("Папка игры (CUSA03173)"))
+        self.game_row.set_subtitle_lines(1)
         self.game_status = Gtk.Image()
         self.game_row.add_suffix(self.game_status)
         self.game_row.add_suffix(flat_button("folder-open-symbolic", tr("Выбрать папку с eboot.bin"),
@@ -1432,6 +2276,7 @@ class LauncherWindow(Adw.ApplicationWindow):
 
         # Saves folder
         self.user_row = Adw.ActionRow(title=tr("Папка сохранений"))
+        self.user_row.set_subtitle_lines(1)
         self.user_status = Gtk.Image()
         self.user_row.add_suffix(self.user_status)
         self.user_row.add_suffix(flat_button("folder-open-symbolic", tr("Выбрать папку сохранений"),
@@ -1477,6 +2322,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         controls = Adw.PreferencesGroup(
             title=tr("Управление"),
             description=tr("Отображение кнопок и раскладка в игре"))
+        self.controls_group = controls
         self.control_scheme_row = combo_row(
             tr("Схема управления"), None, CONTROL_SCHEMES,
             self.current_control_scheme())
@@ -1492,6 +2338,7 @@ class LauncherWindow(Adw.ApplicationWindow):
                                                active=self.settings["mods_enabled"])
         self.mods_group.add(self.mods_enabled_row)
         self.mods_folder_row = Adw.ActionRow(title=tr("Папка модов"))
+        self.mods_folder_row.set_subtitle_lines(1)
         self.mods_folder_row.add_suffix(flat_button("folder-open-symbolic", tr("Выбрать папку модов"),
                                                     self.on_choose_mods))
         self.mods_folder_row.add_suffix(flat_button("system-file-manager-symbolic", tr("Открыть папку модов"),
@@ -1508,6 +2355,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             description=tr("XML-патчи в формате shadPS4 для версии 01.09 из папки патчей. "
                            "Применяются при запуске."))
         self.patches_folder_row = Adw.ActionRow(title=tr("Папка патчей"))
+        self.patches_folder_row.set_subtitle_lines(1)
         self.patches_folder_row.add_suffix(flat_button("folder-open-symbolic", tr("Выбрать папку патчей"),
                                                        self.on_choose_patches))
         self.patches_folder_row.add_suffix(flat_button(
@@ -1523,6 +2371,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         enhancements = Adw.PreferencesGroup(
             title=tr("Улучшения (PC)"),
             description=tr("Игровые файлы создаются при запуске; выключено — игра как в оригинале"))
+        self.enhancements_group = enhancements
         self.enhancement_rows = {}
         for key, title, default in ENHANCEMENTS:
             row = Adw.SwitchRow(title=tr(title),
@@ -1534,6 +2383,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         cheats = Adw.PreferencesGroup(
             title=tr("Читы и твики"),
             description=tr("Патчи игры 1.09: сложность, физика и камера"))
+        self.cheats_group = cheats
         self.cheat_rows = {}
         for key, title, default in CHEATS_AND_TWEAKS:
             row = Adw.SwitchRow(title=tr(title),
@@ -1544,8 +2394,6 @@ class LauncherWindow(Adw.ApplicationWindow):
 
         return page
 
-    # --- 4. Downloads & Assets page ------------------------------------------------------
-
     def build_downloads_page(self):
         page = Adw.PreferencesPage()
 
@@ -1553,6 +2401,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         fsr_group = Adw.PreferencesGroup(
             title=tr("Ассеты FSR 4"),
             description=tr("FSR 4 assets"))
+        self.fsr_group = fsr_group
 
         row_fsr = Adw.ActionRow(title=tr("Ассеты FSR 4"))
         total = len(fsr4_files())
@@ -1574,6 +2423,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         # Prompts Group
         prompt_group = Adw.PreferencesGroup(
             title=tr("Отображение кнопок и раскладка в игре"))
+        self.prompt_group = prompt_group
 
         row_kb = Adw.ActionRow(title=tr("ПК — клавиатура и мышь"))
         kb_bundled = bundled_keyboard_prompts(PORT_DIR) is not None
@@ -1614,363 +2464,54 @@ class LauncherWindow(Adw.ApplicationWindow):
         expand_preferences_page(page, max_size=1150)
         return page
 
-    # --- 5. Settings page ----------------------------------------------------------------
+    # --- Settings control groups ---
 
-    def build_settings_page(self):
-        page = Adw.PreferencesPage()
+    def log_level_for(self, text):
+        low = text.lower()
+        if any(word in low for word in ("error", "fatal", "failed", "failure",
+                                        "exception", "signal")):
+            return "ERROR"
+        if "warn" in low:
+            return "WARNING"
+        if "debug" in low:
+            return "DEBUG"
+        return "INFO"
 
-        # Dedicated Language Selector
-        lang_group = Adw.PreferencesGroup(
-            title=tr("Language"),
-            description=tr("Choose the language for the launcher interface. This does not change the game language."))
-        self.ui_language_row = combo_row(
-            tr("Language"),
-            tr("Applies after restarting the launcher while the game is running"),
-            UI_LANGUAGES,
-            self.settings.get("ui_language") or "en"
-        )
-        self.ui_language_row.connect("notify::selected", self.on_ui_language)
-        lang_group.add(self.ui_language_row)
-        page.add(lang_group)
+    def log_filter_level(self):
+        if not hasattr(self, "log_level_drop"):
+            return "All"
+        index = self.log_level_drop.get_selected()
+        return ("All", "INFO", "WARNING", "ERROR", "DEBUG")[index] if index < 5 else "All"
 
-        # Launcher Behavior
-        behavior_group = Adw.PreferencesGroup(
-            title=tr("Launcher Behavior"))
-        self.start_minimized_row = Adw.SwitchRow(
-            title=tr("Start minimized"),
-            subtitle=tr("Start the launcher minimized to the system tray"),
-            active=bool(self.settings.get("start_minimized", False)))
-        self.start_minimized_row.connect("notify::active", lambda *_: self.store())
-        behavior_group.add(self.start_minimized_row)
+    def log_entry_matches(self, entry):
+        wanted = self.log_filter_level()
+        return wanted == "All" or entry["level"] == wanted
 
-        self.close_to_tray_row = Adw.SwitchRow(
-            title=tr("Close to tray"),
-            subtitle=tr("Minimize to tray instead of exiting the launcher"),
-            active=bool(self.settings.get("close_to_tray", True)))
-        self.close_to_tray_row.connect("notify::active", lambda *_: self.store())
-        behavior_group.add(self.close_to_tray_row)
+    def insert_log_entry(self, entry):
+        buffer = self.log_view.get_buffer()
+        stamp = f"[{entry['time']}] " if (hasattr(self, "log_timestamps")
+                                           and self.log_timestamps.get_active()) else ""
+        buffer.insert_with_tags_by_name(
+            buffer.get_end_iter(), stamp + entry["text"] + "\n", f"log-{entry['level'].lower()}")
 
-        self.check_updates_row = Adw.SwitchRow(
-            title=tr("Check for updates on startup"),
-            subtitle=tr("Automatically check for launcher and asset updates"),
-            active=bool(self.settings.get("check_updates", True)))
-        self.check_updates_row.connect("notify::active", lambda *_: self.store())
-        behavior_group.add(self.check_updates_row)
-
-        self.confirm_launch_row = Adw.SwitchRow(
-            title=tr("Show launch confirmation"),
-            subtitle=tr("Ask for confirmation before launching the game"),
-            active=bool(self.settings.get("show_confirmation", False)))
-        self.confirm_launch_row.connect("notify::active", lambda *_: self.store())
-        behavior_group.add(self.confirm_launch_row)
-        page.add(behavior_group)
-
-        # Window and Interface
-        window_group = Adw.PreferencesGroup(
-            title=tr("Window and Interface"))
-        self.ui_scale_row = combo_row(
-            tr("Interface scaling"),
-            tr("Adjust UI size (requires restart)"),
-            UI_SCALE_OPTIONS,
-            self.settings.get("ui_scale", "100")
-        )
-        self.ui_scale_row.connect("notify::selected", lambda *_: self.store())
-        window_group.add(self.ui_scale_row)
-
-        self.theme_row = combo_row(
-            tr("Color theme"),
-            tr("Application appearance"),
-            THEME_OPTIONS,
-            self.settings.get("theme", "dark")
-        )
-        self.theme_row.connect("notify::selected", lambda *_: self.store())
-        window_group.add(self.theme_row)
-
-        self.reduce_motion_row = Adw.SwitchRow(
-            title=tr("Reduce motion"),
-            subtitle=tr("Disable non-essential animations"),
-            active=bool(self.settings.get("reduce_motion", False)))
-        self.reduce_motion_row.connect("notify::active", lambda *_: self.store())
-        window_group.add(self.reduce_motion_row)
-        page.add(window_group)
-
-        # Data and Storage
-        storage_group = Adw.PreferencesGroup(
-            title=tr("Data and Storage"))
-
-        row_cfg = Adw.ActionRow(
-            title=tr("Configuration directory"),
-            subtitle=str(CONFIG_DIR))
-        row_cfg.add_suffix(flat_button("folder-open-symbolic", tr("Open Folder"),
-                                       lambda _: open_folder(self, CONFIG_DIR)))
-        storage_group.add(row_cfg)
-
-        logs_path = DATA_DIR / "logs" if (DATA_DIR / "logs").exists() else DATA_DIR
-        row_logs = Adw.ActionRow(
-            title=tr("Logs directory"),
-            subtitle=str(logs_path))
-        row_logs.add_suffix(flat_button("folder-open-symbolic", tr("Open Folder"),
-                                        lambda _: open_folder(self, logs_path)))
-        storage_group.add(row_logs)
-
-        row_open = Adw.ActionRow(
-            title=tr("Open configuration folder"),
-            subtitle=tr("Open the launcher configuration directory in your file manager"))
-        btn_open = Gtk.Button(label=tr("Open Folder"), valign=Gtk.Align.CENTER)
-        btn_open.connect("clicked", lambda _: open_folder(self, CONFIG_DIR))
-        row_open.add_suffix(btn_open)
-        storage_group.add(row_open)
-        page.add(storage_group)
-
-        # Launcher Information
-        info_group = Adw.PreferencesGroup(
-            title=tr("Launcher Information"))
-        row_ver = Adw.ActionRow(title=tr("Version"), subtitle="0.3.0")
-        row_build = Adw.ActionRow(title=tr("Build"), subtitle="linux-x86_64")
-        row_cpath = Adw.ActionRow(title=tr("Configuration path"), subtitle=str(CONFIG_FILE))
-        row_info_btn = Adw.ActionRow()
-        btn_open_fm = Gtk.Button(label=tr("Open in File Manager"), valign=Gtk.Align.CENTER)
-        btn_open_fm.connect("clicked", lambda _: open_folder(self, CONFIG_DIR))
-        row_info_btn.add_suffix(btn_open_fm)
-        info_group.add(row_ver)
-        info_group.add(row_build)
-        info_group.add(row_cpath)
-        info_group.add(row_info_btn)
-        page.add(info_group)
-
-        # About
-        about_group = Adw.PreferencesGroup(
-            title=tr("About"),
-            description=tr("A community-driven native PC port"))
-
-        def make_link_row(title_text):
-            r = Adw.ActionRow(title=title_text)
-            img = Gtk.Image.new_from_icon_name("external-link-symbolic")
-            img.set_pixel_size(14)
-            img.add_css_class("dim-label")
-            r.add_suffix(img)
-            return r
-
-        about_group.add(make_link_row(tr("View Project Repository")))
-        about_group.add(make_link_row(tr("Report an Issue")))
-        about_group.add(make_link_row(tr("View License")))
-        about_group.add(make_link_row(tr("Credits")))
-        page.add(about_group)
-
-        expand_preferences_page(page, max_size=1150)
-        return page
-
-    # --- 6. Log page ---------------------------------------------------------------------
-
-    def build_log_page(self):
-        container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        container.set_margin_top(12)
-        container.set_margin_bottom(16)
-        container.set_margin_start(16)
-        container.set_margin_end(16)
-
-        # Top Header Bar
-        header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
-        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        title_box.set_hexpand(True)
-
-        log_title = Gtk.Label(label=tr("Game Log"), xalign=0)
-        log_title.add_css_class("hero-title")
-        log_title.set_markup(f"<span font_size='18pt' font_weight='bold'>{tr('Game Log')}</span>")
-        title_box.append(log_title)
-
-        log_sub = Gtk.Label(label=tr("Runtime output from the game and renderer"), xalign=0)
-        log_sub.add_css_class("hero-quote")
-        title_box.append(log_sub)
-        header_box.append(title_box)
-
-        # Header Actions
-        actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        actions_box.set_valign(Gtk.Align.CENTER)
-
-        self.log_search_entry = Gtk.SearchEntry()
-        self.log_search_entry.set_placeholder_text(tr("Search in log..."))
-        self.log_search_entry.connect("search-changed", self.on_log_search)
-        actions_box.append(self.log_search_entry)
-
-        btn_clear = Gtk.Button(label=tr("Clear"))
-        btn_clear.connect("clicked", self.on_clear_log)
-        actions_box.append(btn_clear)
-
-        btn_copy = Gtk.Button(label=tr("Copy"))
-        btn_copy.connect("clicked", self.on_copy_log)
-        actions_box.append(btn_copy)
-
-        btn_save = Gtk.Button(label=tr("Save..."))
-        btn_save.connect("clicked", self.on_save_log)
-        actions_box.append(btn_save)
-
-        header_box.append(actions_box)
-        container.append(header_box)
-
-        # Filter Strip
-        filter_strip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
-        filter_strip.set_margin_top(4)
-        filter_strip.set_margin_bottom(6)
-
-        lvl_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        lvl_lbl = Gtk.Label(label=f"{tr('Log level')}:")
-        lvl_lbl.add_css_class("dim-label")
-        lvl_box.append(lvl_lbl)
-        self.log_level_drop = Gtk.DropDown.new_from_strings([tr("All"), "INFO", "WARNING", "ERROR", "DEBUG"])
-        lvl_box.append(self.log_level_drop)
-        filter_strip.append(lvl_box)
-
-        cat_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        cat_lbl = Gtk.Label(label=f"{tr('Category')}:")
-        cat_lbl.add_css_class("dim-label")
-        cat_box.append(cat_lbl)
-        self.log_cat_drop = Gtk.DropDown.new_from_strings([tr("All"), "Renderer", "Audio", "Core", "Vulkan"])
-        cat_box.append(self.log_cat_drop)
-        filter_strip.append(cat_box)
-
-        scroll_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        scroll_lbl = Gtk.Label(label=tr("Auto-scroll"))
-        scroll_lbl.add_css_class("dim-label")
-        self.log_autoscroll = Gtk.Switch(active=True)
-        scroll_box.append(self.log_autoscroll)
-        scroll_box.append(scroll_lbl)
-        filter_strip.append(scroll_box)
-
-        time_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        time_lbl = Gtk.Label(label=tr("Show timestamps"))
-        time_lbl.add_css_class("dim-label")
-        self.log_timestamps = Gtk.Switch(active=True)
-        time_box.append(self.log_timestamps)
-        time_box.append(time_lbl)
-        filter_strip.append(time_box)
-
-        container.append(filter_strip)
-
-        # Body: Terminal on Left + Diagnostics Panel on Right
-        body_grid = Gtk.Grid()
-        body_grid.set_column_spacing(14)
-        body_grid.set_hexpand(True)
-        body_grid.set_vexpand(True)
-
-        # Terminal text view
-        self.log_view = Gtk.TextView(editable=False, monospace=True, cursor_visible=False,
-                                     wrap_mode=Gtk.WrapMode.WORD_CHAR)
-        self.log_view.set_top_margin(10)
-        self.log_view.set_left_margin(12)
-        self.log_view.set_right_margin(12)
-        self.log_view.set_bottom_margin(10)
-        self.log_view.add_css_class("log-terminal-view")
-
-        scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True, child=self.log_view)
-        scroller.add_css_class("log-terminal-frame")
-        self.log_scroller = scroller
-        body_grid.attach(scroller, 0, 0, 3, 1)
-
-        # Right Diagnostic Panel
-        side_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-        side_box.set_size_request(240, -1)
-        side_box.add_css_class("quick-actions-list")
-        side_box.set_margin_top(2)
-        side_box.set_margin_bottom(2)
-
-        # Section 1: Log Details
-        details_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        details_box.set_margin_start(14)
-        details_box.set_margin_end(14)
-        details_box.set_margin_top(12)
-
-        det_title = Gtk.Label(label=tr("Log Details"), xalign=0)
-        det_title.add_css_class("section-header-title")
-        details_box.append(det_title)
-
-        def make_kv(k, v, v_color=None):
-            b = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-            kl = Gtk.Label(label=k, xalign=0)
-            kl.add_css_class("dim-label")
-            kl.set_size_request(55, -1)
-            vl = Gtk.Label(label=v, xalign=0)
-            vl.set_hexpand(True)
-            if v_color:
-                vl.set_markup(f"<span foreground='{v_color}'><b>{v}</b></span>")
-            b.append(kl)
-            b.append(vl)
-            return b
-
-        details_box.append(make_kv(tr("Time"), "12:14:06"))
-        details_box.append(make_kv(tr("Level"), "ERROR", "#e74c3c"))
-        details_box.append(make_kv(tr("Source"), "Renderer (libbbgpu.so)"))
-        details_box.append(make_kv(tr("Thread"), "bb:DrawRec"))
-        msg_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        msg_lbl = Gtk.Label(label=tr("Message"), xalign=0)
-        msg_lbl.add_css_class("dim-label")
-        msg_val = Gtk.Label(label=tr("Host fault (signal 11) in Fsr4Upscaler::Record"), xalign=0, wrap=True)
-        msg_val.add_css_class("hero-status-sub")
-        msg_box.append(msg_lbl)
-        msg_box.append(msg_val)
-        details_box.append(msg_box)
-        side_box.append(details_box)
-
-        sep_side1 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        sep_side1.set_margin_top(6)
-        sep_side1.set_margin_bottom(6)
-        side_box.append(sep_side1)
-
-        # Section 2: Filters
-        filter_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        filter_box.set_margin_start(14)
-        filter_box.set_margin_end(14)
-        filt_title = Gtk.Label(label=tr("Filters"), xalign=0)
-        filt_title.add_css_class("section-header-title")
-        filter_box.append(filt_title)
-
-        for lvl, color, active in [("INFO", "#3498db", True), ("WARNING", "#f39c12", True),
-                                   ("ERROR", "#e74c3c", True), ("DEBUG", "#7f8c8d", False)]:
-            cb = Gtk.CheckButton(active=active)
-            cb_label = Gtk.Label()
-            cb_label.set_markup(f"<span foreground='{color}'><b>●</b></span>  {lvl}")
-            cb.set_child(cb_label)
-            filter_box.append(cb)
-        side_box.append(filter_box)
-
-        sep_side2 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        sep_side2.set_margin_top(6)
-        sep_side2.set_margin_bottom(6)
-        side_box.append(sep_side2)
-
-        # Section 3: Quick Actions
-        qa_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        qa_box.set_margin_start(14)
-        qa_box.set_margin_end(14)
-        qa_box.set_margin_bottom(12)
-        qa_title = Gtk.Label(label=tr("Quick Actions"), xalign=0)
-        qa_title.add_css_class("section-header-title")
-        qa_box.append(qa_title)
-
-        def make_qa_btn(icon_name, label_text, callback):
-            b = Gtk.Button()
-            b.add_css_class("flat")
-            box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            img = Gtk.Image.new_from_icon_name(icon_name)
-            img.set_pixel_size(16)
-            lbl = Gtk.Label(label=label_text, xalign=0)
-            lbl.add_css_class("hero-status-sub")
-            box.append(img)
-            box.append(lbl)
-            b.set_child(box)
-            b.connect("clicked", callback)
-            return b
-
-        qa_box.append(make_qa_btn("edit-copy-symbolic", tr("Copy Selected"), self.on_copy_selected))
-        qa_box.append(make_qa_btn("edit-copy-symbolic", tr("Copy All"), self.on_copy_log))
-        qa_box.append(make_qa_btn("edit-clear-symbolic", tr("Clear Log"), self.on_clear_log))
-        qa_box.append(make_qa_btn("folder-open-symbolic", tr("Open Log File"), self.on_open_log_file))
-
-        side_box.append(qa_box)
-        body_grid.attach(side_box, 3, 0, 1, 1)
-
-        container.append(body_grid)
-        return container
+    def refresh_log_view(self):
+        if not hasattr(self, "log_view"):
+            return
+        buffer = self.log_view.get_buffer()
+        buffer.set_text("")
+        visible = 0
+        for entry in self.log_entries:
+            if self.log_entry_matches(entry):
+                self.insert_log_entry(entry)
+                visible += 1
+        if not self.log_entries:
+            buffer.set_text(tr("No runtime output yet. Launch the game to see live output."))
+        elif not visible:
+            buffer.set_text(tr("No log lines match this filter."))
+        if hasattr(self, "log_autoscroll") and self.log_autoscroll.get_active():
+            if hasattr(self, "log_scroller"):
+                adjustment = self.log_scroller.get_vadjustment()
+                GLib.idle_add(lambda: adjustment.set_value(adjustment.get_upper()) and False)
 
     def on_log_search(self, entry):
         text = entry.get_text()
@@ -1983,8 +2524,28 @@ class LauncherWindow(Adw.ApplicationWindow):
             buffer.select_range(match[0], match[1])
             self.log_view.scroll_to_iter(match[0], 0.1, False, 0.0, 0.0)
 
+    def on_log_cursor(self, buffer, _param):
+        if not hasattr(self, "log_detail_text"):
+            return
+        cursor = buffer.get_iter_at_mark(buffer.get_insert())
+        start = cursor.copy()
+        start.set_line_offset(0)
+        end = cursor.copy()
+        if not end.ends_line():
+            end.forward_to_line_end()
+        line = buffer.get_text(start, end, False)
+        self.log_detail_text.set_text(line)
+        match = re.match(r"\[(\d\d:\d\d:\d\d)\]\s*(.*)", line)
+        self.log_detail_time.set_text(match.group(1) if match else "—")
+        self.log_detail_level.set_text(self.log_level_for(match.group(2) if match else line))
+
     def on_clear_log(self, _button):
+        self.log_entries = []
         self.log_view.get_buffer().set_text("")
+        try:
+            log_path().write_text("", encoding="utf-8")
+        except OSError:
+            pass
 
     def on_copy_log(self, _button):
         buffer = self.log_view.get_buffer()
@@ -2005,7 +2566,7 @@ class LauncherWindow(Adw.ApplicationWindow):
     def on_save_log(self, _button):
         buffer = self.log_view.get_buffer()
         text = buffer.get_text(*buffer.get_bounds(), False)
-        dialog = Gtk.FileDialog(title=tr("Сохранить журнал"))
+        dialog = Gtk.FileDialog(title=tr("Save log"))
 
         def finish(d, result):
             try:
@@ -2013,90 +2574,165 @@ class LauncherWindow(Adw.ApplicationWindow):
             except GLib.Error:
                 return
             if gfile:
-                Path(gfile.get_path()).write_text(text, encoding="utf-8")
+                try:
+                    Path(gfile.get_path()).write_text(text, encoding="utf-8")
+                except OSError as error:
+                    self.toasts.add_toast(Adw.Toast(
+                        title=tr("Could not save log: {}").format(error)))
 
         dialog.save(self, None, finish)
 
     def on_open_log_file(self, _button):
-        logs_path = DATA_DIR / "logs" if (DATA_DIR / "logs").exists() else DATA_DIR
-        open_folder(self, logs_path)
+        path = log_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch(exist_ok=True)
+            Gtk.FileLauncher.new(Gio.File.new_for_path(str(path))).launch(self, None, None)
+        except (OSError, GLib.Error):
+            open_folder(self, path.parent)
 
     def append_log(self, text):
-        buffer = self.log_view.get_buffer()
-        buffer.insert(buffer.get_end_iter(), text)
-        extra = buffer.get_line_count() - MAX_LOG_LINES
-        if extra > 0:
-            buffer.delete(buffer.get_start_iter(), buffer.get_iter_at_line(extra)[1])
-        if hasattr(self, "log_autoscroll") and not self.log_autoscroll.get_active():
+        entries = []
+        for line in str(text).splitlines():
+            if not line:
+                continue
+            entries.append({"time": datetime.now().strftime("%H:%M:%S"),
+                            "level": self.log_level_for(line), "text": line})
+            try:
+                path = log_path()
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with path.open("a", encoding="utf-8") as stream:
+                    stream.write(line + "\n")
+            except OSError:
+                pass
+        if not entries:
             return
-        adj = self.log_scroller.get_vadjustment()
-        GLib.idle_add(lambda: adj.set_value(adj.get_upper()) and False)
+        self.log_entries.extend(entries)
+        trimmed = len(self.log_entries) > MAX_LOG_LINES
+        if trimmed:
+            self.log_entries = self.log_entries[-MAX_LOG_LINES:]
+            self.refresh_log_view()
+        else:
+            for entry in entries:
+                if self.log_entry_matches(entry):
+                    self.insert_log_entry(entry)
+        if hasattr(self, "log_autoscroll") and self.log_autoscroll.get_active():
+            if hasattr(self, "log_scroller"):
+                adjustment = self.log_scroller.get_vadjustment()
+                GLib.idle_add(lambda: adjustment.set_value(adjustment.get_upper()) and False)
 
     # --- State updates -------------------------------------------------------------------
 
-    def update_recent_activity(self):
-        if not hasattr(self, "activity_label"):
+    def update_playtime_summary(self):
+        if not hasattr(self, "hero_playtime_summary"):
             return
-        gpath = self.game_dir()
-        ok = bool(self.settings.get("game_dir")) and (gpath / "eboot.bin").is_file()
-        total = len(fsr4_files())
-        missing = len(fsr4_missing())
-        res = combo_value(self.output_row) if hasattr(self, "output_row") else (self.settings.get("output_res") or "1920x1080")
-        upscaler = combo_value(self.upscaler_row) if hasattr(self, "upscaler_row") else (self.settings.get("upscaler") or "fsr3")
+        seconds = load_playtime(activity_path())
+        if self.session_started_at is not None:
+            seconds += max(0, int(time.time() - self.session_started_at))
+        self.hero_playtime_summary.set_text(
+            format_playtime(seconds) if seconds else tr("No play time yet"))
 
-        lines = []
-        if ok:
-            lines.append(f"[12:14:03] {tr('Game directory verified')}")
-            lines.append(f"[12:14:03] {tr('eboot.bin found')}")
-        else:
-            lines.append(f"[12:14:03] {tr('Checking game directory...')}")
-            lines.append(f"[12:14:03] {tr('eboot.bin not found')}")
+    def update_recent_activity(self):
+        if not hasattr(self, "activity_list"):
+            return
+        self.clear_box(self.activity_list)
+        try:
+            events = [event for event in load_events(activity_path(), 50)
+                      if event["kind"] in GAME_ACTIVITY_KINDS][:5]
+        except (OSError, ValueError, TypeError):
+            events = []
+        if not events:
+            self.activity_list.append(
+                self.text_label(tr("No game activity yet."), "activity-empty"))
+            return
+        for event in events:
+            self.activity_list.append(self.activity_row(event))
 
-        if missing == 0:
-            lines.append(f"[12:14:04] {tr('FSR 4 assets: {}/{} (OK)').format(total, total)}")
-        else:
-            lines.append(f"[12:14:04] {tr('FSR 4 assets: missing {}/{} files').format(missing, total)}")
+    def record_activity(self, kind, text):
+        try:
+            record_event(activity_path(), kind, text)
+        except OSError:
+            return
+        self.update_recent_activity()
 
-        lines.append(f"[12:14:04] {tr('Save data mounted at /savedata0')}")
-        lines.append(f"[12:14:05] {tr('Graphics profile loaded: {}, {}').format(upscaler.upper(), res)}")
-        if ok:
-            lines.append(f"[12:14:05] {tr('Ready to launch')}")
-        else:
-            lines.append(f"[12:14:05] {tr('Waiting for game configuration')}")
+    def _record_new_trophies(self, report):
+        earned_ids = {entry.id for entry in report.entries if entry.earned}
+        previous = self._seen_trophy_ids
+        self._seen_trophy_ids = earned_ids
+        if previous is None:
+            return
+        for entry in report.entries:
+            if entry.id in previous or entry.id not in earned_ids:
+                continue
+            if entry.name_available and entry.name:
+                text = tr("Trophy unlocked: {}").format(entry.name)
+            else:
+                text = tr("Trophy #{} unlocked").format(entry.id)
+            self.record_activity("trophy", text)
 
-        self.activity_label.set_text("\n".join(lines))
+    def poll_trophy_activity(self):
+        """Detect trophy unlocks while the game runs without rebuilding the page."""
+        if not self.process_active():
+            self._trophy_poll_source = None
+            return False
+        try:
+            report = load_trophy_report(
+                self.user_dir(), self.game_dir() if self.settings.get("game_dir") else None)
+        except (OSError, ValueError, TypeError):
+            return True
+        self._record_new_trophies(report)
+        self.update_playtime_summary()
+        return True
+
+    def launch_is_ready(self):
+        return bool(self.settings.get("game_dir")) and (self.game_dir() / "eboot.bin").is_file()
 
     def update_launch_button(self):
-        running = self.process is not None
-        label = tr("Stop") if running else tr("Play")
-        hero_label = f"▶  {tr('STOP THE HUNT')}" if running else f"▶  {tr('START THE HUNT')}"
-        self.launch_button.set_label(label)
-        self.launch_button.remove_css_class("destructive-action" if not running else "suggested-action")
-        self.launch_button.add_css_class("destructive-action" if running else "suggested-action")
-
+        state = getattr(self, "launch_state", "idle")
+        running = state == "running"
+        starting = state == "starting"
+        stopping = state == "stopping"
+        ready = self.launch_is_ready()
+        if starting:
+            label = tr("Starting…")
+        elif stopping:
+            label = tr("Stopping…")
+        elif running:
+            label = tr("Stop")
+        else:
+            label = tr("Play")
         if hasattr(self, "hero_launch_button"):
-            self.hero_launch_button.set_label(hero_label)
-            self.hero_launch_button.remove_css_class("running" if not running else "ready")
-            self.hero_launch_button.add_css_class("running" if running else "ready")
+            self.hero_launch_button.set_label(label)
+            self.hero_launch_button.set_sensitive(ready or running or starting or stopping)
+            self.hero_launch_button.remove_css_class("running")
+            if running or stopping:
+                self.hero_launch_button.add_css_class("running")
+        if hasattr(self, "launch_button") and self.launch_button is not getattr(
+                self, "hero_launch_button", None):
+            self.launch_button.set_label(label)
+            self.launch_button.set_sensitive(ready or running or starting or stopping)
 
-        if hasattr(self, "hero_status_label") and hasattr(self, "hero_status_icon"):
+        if hasattr(self, "hero_status_label"):
             if running:
-                self.hero_status_label.set_markup(f"<span foreground='#2ecc71'>●</span> {tr('Game is running')}")
-                if hasattr(self, "hero_status_detail"):
-                    self.hero_status_detail.set_text(f"PID {self.process.pid}")
-                self.hero_status_icon.set_from_icon_name("media-playback-start-symbolic")
+                self.hero_status_label.set_text(tr("Game is running"))
+                self.hero_status_detail.set_text(
+                    f"PID {self.process.get_identifier()}" if self.process else "")
+            elif starting:
+                self.hero_status_label.set_text(tr("Starting the hunt…"))
+                self.hero_status_detail.set_text(tr("Waiting for the renderer"))
+            elif stopping:
+                self.hero_status_label.set_text(tr("Stopping…"))
+                self.hero_status_detail.set_text(tr("Waiting for the game to close"))
+            elif state == "failed":
+                self.hero_status_label.set_text(tr("Launch failed"))
+                self.hero_status_detail.set_text(tr("Open Diagnostics for the full output"))
+            elif ready:
+                self.hero_status_label.set_text(tr("Ready to launch"))
+                self.hero_status_detail.set_text(tr("eboot.bin found"))
             else:
-                ok = bool(self.settings.get("game_dir")) and (self.game_dir() / "eboot.bin").is_file()
-                if ok:
-                    self.hero_status_label.set_markup(f"<span foreground='#2ecc71'>●</span> {tr('Ready to launch')}")
-                    if hasattr(self, "hero_status_detail"):
-                        self.hero_status_detail.set_text(tr("eboot.bin found"))
-                    self.hero_status_icon.set_from_icon_name("emblem-ok-symbolic")
-                else:
-                    self.hero_status_label.set_markup(f"<span foreground='#e74c3c'>●</span> {tr('Game not found (select folder with eboot.bin)')}")
-                    if hasattr(self, "hero_status_detail"):
-                        self.hero_status_detail.set_text(tr("not chosen"))
-                    self.hero_status_icon.set_from_icon_name("dialog-warning-symbolic")
+                self.hero_status_label.set_text(tr("Game not found"))
+                self.hero_status_detail.set_text(tr("Choose the folder with eboot.bin"))
+        self.update_shell_status()
 
     def on_ui_language(self, row, _param):
         choice = combo_value(row)
@@ -2135,40 +2771,36 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.user_row.set_subtitle(str(path) if custom else tr("По умолчанию: {}").format(path))
         saves = path / "savedata"
         found = saves.is_dir() and any(saves.iterdir())
-        self.user_status.set_from_icon_name("object-select-symbolic" if found else "document-new-symbolic")
+        self.user_status.set_from_icon_name("object-select-symbolic" if found
+                                            else "document-new-symbolic")
         self.user_status.set_tooltip_text(tr("Найдены сохранения") if found
                                           else tr("Сохранений пока нет: игра создаст их здесь"))
         self.user_reset.set_sensitive(custom)
         if hasattr(self, "hero_hunter_summary"):
-            hunter = self.settings.get("player_name") or "Hunter"
-            scheme = self.current_control_scheme().upper()
-            if found:
-                self.hero_hunter_summary.set_markup(f"<span foreground='#2ecc71'>●</span> <b>SPRJ0005</b>\n<span foreground='#8c867a'>/savedata0 ({hunter})</span>")
-            else:
-                self.hero_hunter_summary.set_markup(f"<span foreground='#8c867a'>● {tr('Save Data')}</span>\n<span foreground='#8c867a'>{hunter} · {scheme}</span>")
+            self.hero_hunter_summary.set_text(
+                tr("Save data found") if found else tr("No saves yet"))
 
     def update_game_status(self):
         path = self.game_dir()
-        ok = bool(self.settings.get("game_dir")) and (path / "eboot.bin").is_file()
+        ok = self.launch_is_ready()
         self.game_row.set_subtitle(str(path) if self.settings.get("game_dir") else tr("не выбрана"))
-        self.game_status.set_from_icon_name("object-select-symbolic" if ok else "dialog-warning-symbolic")
-        self.game_status.set_tooltip_text(tr("Найден eboot.bin") if ok else tr("Нет eboot.bin в папке"))
-        self.launch_button.set_sensitive(ok or self.process is not None)
-        if hasattr(self, "hero_launch_button"):
-            self.hero_launch_button.set_sensitive(ok or self.process is not None)
+        self.game_status.set_from_icon_name("object-select-symbolic" if ok
+                                            else "dialog-warning-symbolic")
+        self.game_status.set_tooltip_text(tr("Найден eboot.bin") if ok
+                                          else tr("Нет eboot.bin в папке"))
         if hasattr(self, "hero_game_summary"):
-            if ok:
-                self.hero_game_summary.set_markup(f"<span foreground='#2ecc71'>●</span> <b>eboot.bin OK</b>\n<span foreground='#8c867a'>{path}</span>")
-            else:
-                self.hero_game_summary.set_markup(f"<span foreground='#e74c3c'>●</span> <b>{tr('No eboot.bin in the folder')}</b>\n<span foreground='#8c867a'>{tr('not chosen')}</span>")
+            self.hero_game_summary.set_text(
+                tr("eboot.bin found") if ok
+                else tr("No eboot.bin in the selected folder"))
+            self.hero_game_summary.set_tooltip_text(str(path))
         self.update_launch_button()
-        self.update_recent_activity()
 
     def on_choose_game(self, _button):
         def chosen(path):
             self.settings["game_dir"] = path
-            self.update_game_status()
             self.store()
+            self.refresh_details()
+            self.record_activity("game", tr("Game folder selected"))
         self.choose_folder(tr("Папка игры (с eboot.bin)"), self.game_dir(), chosen)
 
     def choose_folder(self, title, current, done):
@@ -2190,6 +2822,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             self.settings["user_dir"] = path
             self.update_user_status()
             self.refresh_trophy_status()
+            self.refresh_trophies()
             self.store()
         self.choose_folder(tr("Папка сохранений"), self.user_dir(), chosen)
 
@@ -2226,6 +2859,8 @@ class LauncherWindow(Adw.ApplicationWindow):
                     title=tr("Не удалось установить ключи трофеев: {}").format(error)))
                 return
             self.refresh_trophy_status()
+            self.refresh_trophies()
+            self.record_activity("settings", tr("Trophy keys imported"))
             self.toasts.add_toast(Adw.Toast(
                 title=tr("Ключи трофеев установлены. Имена появятся после запуска игры.")))
 
@@ -2234,6 +2869,7 @@ class LauncherWindow(Adw.ApplicationWindow):
     def on_reset_user(self, _button):
         self.settings["user_dir"] = ""
         self.update_user_status()
+        self.refresh_trophies()
         self.store()
 
     def on_choose_dlc(self, _button):
@@ -2264,14 +2900,15 @@ class LauncherWindow(Adw.ApplicationWindow):
             self.fsr4_button.set_sensitive(False)
             self.fsr4_button.set_label(tr("Не поддерживается"))
             if hasattr(self, "hero_assets_summary"):
-                self.hero_assets_summary.set_markup(f"<span foreground='#e74c3c'>●</span> <b>FSR 4</b>\n<span foreground='#8c867a'>{tr('Unsupported')}</span>")
+                self.hero_assets_summary.set_text(tr("Unsupported GPU"))
         elif missing == 0:
             self.fsr4_row.set_subtitle(tr("Установлены: {} файлов в fsr4_shaders").format(total))
             self.fsr4_progress.set_visible(False)
             self.fsr4_button.set_sensitive(True)
             self.fsr4_button.set_label(tr("Проверить"))
             if hasattr(self, "hero_assets_summary"):
-                self.hero_assets_summary.set_markup(f"<span foreground='#2ecc71'>●</span> <b>{total} / {total} files</b>\n<span foreground='#8c867a'>{tr('Verified')}</span>")
+                self.hero_assets_summary.set_text(
+                    tr("{} / {} files · Verified").format(total, total))
         else:
             self.fsr4_row.set_subtitle(tr("Отсутствует {} из {} файлов в fsr4_shaders").format(missing, total))
             self.fsr4_progress.set_fraction((total - missing) / total)
@@ -2279,7 +2916,8 @@ class LauncherWindow(Adw.ApplicationWindow):
             self.fsr4_button.set_sensitive(True)
             self.fsr4_button.set_label(tr("Скачать ассеты"))
             if hasattr(self, "hero_assets_summary"):
-                self.hero_assets_summary.set_markup(f"<span foreground='#e67e22'>●</span> <b>{total - missing} / {total} files</b>\n<span foreground='#8c867a'>{tr('Download assets')}</span>")
+                self.hero_assets_summary.set_text(
+                    tr("{} / {} files · Missing {}").format(total - missing, total, missing))
 
     def on_precompile_shaders(self, _button):
         """Warm the shader/pipeline cache: run the game's pre-build, then exit
@@ -2324,9 +2962,11 @@ class LauncherWindow(Adw.ApplicationWindow):
             self.precompile_button.set_sensitive(True)
             self.precompile_button.set_label(tr("Скомпилировать"))
         if code == 0:
+            self.record_activity("precompile", tr("Shader precompile finished"))
             self.toasts.add_toast(Adw.Toast(
                 title=tr("Шейдеры скомпилированы. Следующий запуск будет быстрее.")))
             return
+        self.record_activity("precompile", tr("Shader precompile failed (code {})").format(code))
         dialog = Adw.MessageDialog.new(
             self,
             tr("Не удалось скомпилировать шейдеры (код {}).").format(code),
@@ -2403,6 +3043,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.refresh_fsr4_status()
         self.update_upscaler_status()
         if error:
+            self.record_activity("fsr4", tr("FSR 4 asset download failed"))
             dialog = Adw.MessageDialog.new(
                 self,
                 tr("Ошибка загрузки FSR 4: {}").format(error),
@@ -2410,6 +3051,8 @@ class LauncherWindow(Adw.ApplicationWindow):
             )
             dialog.add_response("ok", tr("Закрыть"))
             dialog.present()
+        else:
+            self.record_activity("fsr4", tr("FSR 4 assets downloaded"))
 
     def update_upscaler_status(self):
         value = combo_value(self.upscaler_row)
@@ -2465,23 +3108,17 @@ class LauncherWindow(Adw.ApplicationWindow):
                 preset_desc_short = f"Internal: {rw}×{rh} ({scale:.1f}×)"
             self.preset_row.set_subtitle(preset_desc)
             if hasattr(self, "hero_graphics_summary"):
-                self.hero_graphics_summary.set_markup(f"<b>{out_str} · {value.upper()}</b>\n<span foreground='#8c867a'>{preset_desc_short}</span>")
-        self.update_recent_activity()
+                upscaler_label = next(
+                    (tr(label) for label, choice in UPSCALERS if choice == value), value)
+                preset_label = tr(PRESETS[preset_idx][0]) if 0 <= preset_idx < len(PRESETS) \
+                    else tr("Native AA")
+                self.hero_graphics_summary.set_text(
+                    f"{out_str.replace('x', '×')} · {upscaler_label} · {preset_label}")
+                self.hero_graphics_summary.set_tooltip_text(preset_desc)
+        self.update_shell_status()
 
     def store(self):
         s = self.settings
-        if hasattr(self, "start_minimized_row"):
-            s["start_minimized"] = self.start_minimized_row.get_active()
-        if hasattr(self, "close_to_tray_row"):
-            s["close_to_tray"] = self.close_to_tray_row.get_active()
-        if hasattr(self, "check_updates_row"):
-            s["check_updates"] = self.check_updates_row.get_active()
-        if hasattr(self, "confirm_launch_row"):
-            s["show_confirmation"] = self.confirm_launch_row.get_active()
-        if hasattr(self, "ui_scale_row"):
-            s["ui_scale"] = combo_value(self.ui_scale_row)
-        if hasattr(self, "theme_row"):
-            s["theme"] = combo_value(self.theme_row)
         if hasattr(self, "reduce_motion_row"):
             s["reduce_motion"] = self.reduce_motion_row.get_active()
         if hasattr(self, "ui_language_row"):
@@ -2735,8 +3372,23 @@ class LauncherWindow(Adw.ApplicationWindow):
         if self.precompiling:
             self.toasts.add_toast(Adw.Toast(title=tr("Дождитесь окончания компиляции шейдеров.")))
             return
-        self.store()
-        self.log_view.get_buffer().set_text("")
+        if self.launch_state in ("starting", "stopping"):
+            return
+        if not self.launch_is_ready():
+            self.toasts.add_toast(Adw.Toast(
+                title=tr("Choose the extracted CUSA03173 folder first.")))
+            self.show_settings_category("game_data")
+            return
+        try:
+            self.store()
+        except Exception as error:
+            self.toasts.add_toast(Adw.Toast(
+                title=tr("Could not save settings: {}").format(error)))
+            return
+        self.launch_state = "starting"
+        self.update_launch_button()
+        self.log_entries = []
+        self.refresh_log_view()
         launcher = Gio.SubprocessLauncher.new(
             Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
         launcher.set_environ([f"{k}={v}" for k, v in self.environment().items()])
@@ -2744,13 +3396,31 @@ class LauncherWindow(Adw.ApplicationWindow):
         try:
             self.process = launcher.spawnv(["setsid", "bash", str(PORT_DIR / "run.sh")])
         except GLib.Error as error:
-            self.toasts.add_toast(Adw.Toast(title=tr("Не удалось запустить: {}").format(error.message)))
+            self.launch_state = "failed"
+            self.update_launch_button()
+            self.record_activity("session", tr("Game failed to start"))
+            dialog = Adw.MessageDialog.new(
+                self, tr("Could not launch Bloodborne"), getattr(error, "message", str(error)))
+            dialog.add_response("close", tr("Close"))
+            dialog.add_response("diagnostics", tr("Open Diagnostics"))
+            dialog.set_response_appearance("diagnostics", Adw.ResponseAppearance.SUGGESTED)
+            dialog.connect("response", lambda _d, response:
+                           self.show_settings_category("diagnostics")
+                           if response == "diagnostics" else None)
+            dialog.present()
             return
         self.stream = Gio.DataInputStream.new(self.process.get_stdout_pipe())
         self.read_line()
         self.process.wait_async(None, self.on_exit)
+        self.launch_state = "running"
+        if self._trophy_poll_source:
+            try:
+                GLib.source_remove(self._trophy_poll_source)
+            except Exception:
+                pass
+        self._trophy_poll_source = GLib.timeout_add_seconds(10, self.poll_trophy_activity)
         self.update_launch_button()
-        self.stack.set_visible_child_name("log")
+        self.update_playtime_summary()
 
     def read_line(self):
         self.stream.read_line_async(GLib.PRIORITY_DEFAULT, None, self.on_line)
@@ -2770,12 +3440,18 @@ class LauncherWindow(Adw.ApplicationWindow):
             return
         if line is None:
             return
+        if "Entering original x86-64 code" in line and self.session_started_at is None:
+            self.session_started_at = time.time()
+            self.record_activity("session", tr("Game started"))
+            self.update_playtime_summary()
         self.append_log(line + "\n")
         self.read_line()
 
     def stop_game(self):
         if not self.process:
             return
+        self.launch_state = "stopping"
+        self.update_launch_button()
         try:
             pid = int(self.process.get_identifier())
         except (TypeError, ValueError):
@@ -2806,14 +3482,55 @@ class LauncherWindow(Adw.ApplicationWindow):
         except GLib.Error:
             pass
         status = process.get_exit_status() if process.get_if_exited() else -1
-        if process is self.process:
-            self.process = None
-            self._stopping_pid = None
+        if process is not self.process:
+            return
+        self.process = None
+        self._stopping_pid = None
+        self.launch_state = "idle"
+        poll_source = getattr(self, "_trophy_poll_source", None)
+        if poll_source:
+            try:
+                GLib.source_remove(poll_source)
+            except Exception:
+                pass
+            self._trophy_poll_source = None
+        if hasattr(self, "_finish_session"):
+            self._finish_session()
         self.update_launch_button()
-        self.update_game_status()
-        self.append_log(tr("\n— игра завершилась (код {}) —\n").format(status))
+        if hasattr(self, "refresh_details"):
+            self.refresh_details()
+        if hasattr(self, "refresh_trophies"):
+            self.refresh_trophies()
+        if hasattr(self, "append_log"):
+            self.append_log(tr("\n— игра завершилась (код {}) —\n").format(status))
+
+    def _finish_session(self):
+        if self.session_started_at is None:
+            return
+        duration = max(0, int(time.time() - self.session_started_at))
+        self.session_started_at = None
+        try:
+            add_playtime(activity_path(), duration)
+        except OSError:
+            pass
+        self.record_activity(
+            "session", tr("Played for {}").format(format_playtime(duration)))
+        self.update_playtime_summary()
 
     def on_close(self, _window):
+        if getattr(self, "_save_source", None):
+            try:
+                GLib.source_remove(self._save_source)
+            except Exception:
+                pass
+            self._save_source = None
+        if getattr(self, "_trophy_poll_source", None):
+            try:
+                GLib.source_remove(self._trophy_poll_source)
+            except Exception:
+                pass
+            self._trophy_poll_source = None
+        self._finish_session()
         self.store()
         if self.process:
             self.stop_game()
@@ -2826,9 +3543,16 @@ class LauncherApp(Adw.Application):
                          flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
 
     def do_activate(self):
-        install_gothic_theme()
+        install_theme()
+        if not getattr(self, "_activity_recorded", False):
+            self._activity_recorded = True
+            try:
+                record_event(activity_path(), "launcher", tr("Launcher started"))
+            except OSError:
+                pass
         window = self.get_active_window() or LauncherWindow(self)
         window.present()
+        window.update_recent_activity()
 
 
 def play():

@@ -5,6 +5,19 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
+## Unreleased
+
+- **Trophies:** the launcher groups the list into **Unlocked** and **Locked** sections. It
+  records a real `Trophy unlocked: …` event when the local unlock history gains an entry.
+- **Game activity and play time:** Game Details shows total play time and only game activity
+  (sessions and trophy unlocks), not launcher startup, folder changes or asset downloads.
+- **Discord Rich Presence:** presence is now the game name and hunter level, with a
+  **Platinum Trophy Earned** state when every trophy in the local cache is unlocked. Blood
+  Echoes, Insight, area/boss text and the attribute tooltip are no longer published.
+- **GUI pass:** the trophy list has clearer section headers, the upscaler preset moved to
+  Upscaling beside the upscaler, the DLSS row no longer truncates, and log lines have more
+  breathing room. The Controller page gains keyboard/mouse rebinding with a capture dialog.
+
 ## 1.10.7 (2026-10-22)
 
 - **Trophies:** `sceNpTrophyGetGameInfo` reports real counts and progress,

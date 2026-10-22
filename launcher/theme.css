@@ -1,0 +1,900 @@
+/* Bloodborne Linux launcher - PS5 system layout.
+ * Full-bleed artwork, quiet typography, white selection, flat rows and hairlines.
+ * No glass cards, neon gradients, oversized pills or dashboard widgets.
+ */
+
+window,
+window.bbport-window,
+.bbport-window {
+    background-color: #08090c;
+    background-image: radial-gradient(circle at 18% 8%, #2a252b 0%, #121318 46%, #08090c 100%);
+    color: #f2f2f2;
+}
+
+/* Transparent shell: the artwork must reach the top of the window. */
+headerbar.ps5-header {
+    background-color: transparent;
+    background-image: none;
+    border: none;
+    box-shadow: none;
+    min-height: 58px;
+    padding: 0 18px;
+}
+
+headerbar.ps5-header windowcontrols button {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.ps5-brand {
+    padding: 0 6px;
+}
+
+.ps5-brand-mark {
+    border-radius: 4px;
+}
+
+.ps5-brand-title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    color: #f2f2f2;
+}
+
+/* PS5 text navigation: white active state, thin underline, no pill. */
+.ps5-nav {
+    padding: 0 8px;
+}
+
+button.ps5-nav-item {
+    background: transparent;
+    background-image: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 15px 4px 12px 4px;
+    border-bottom: 2px solid transparent;
+    transition: color 120ms ease, border-color 120ms ease;
+}
+
+button.ps5-nav-item:hover {
+    color: rgba(255, 255, 255, 0.88);
+}
+
+button.ps5-nav-item.active {
+    color: #ffffff;
+    border-bottom-color: #ffffff;
+}
+
+button.ps5-nav-item:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.85);
+    outline-offset: -3px;
+}
+
+.ps5-status {
+    background: transparent;
+    background-image: none;
+    border: none;
+    border-radius: 3px;
+    box-shadow: none;
+    padding: 6px 8px;
+    margin-right: 8px;
+    color: rgba(255, 255, 255, 0.72);
+}
+
+.ps5-status:hover {
+    color: #ffffff;
+}
+
+.ps5-status-text {
+    font-size: 12px;
+    letter-spacing: 0.2px;
+}
+
+.ps5-status-dot {
+    min-width: 7px;
+    min-height: 7px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.4);
+}
+
+.ps5-status-dot.ready {
+    background-color: #9fb9a4;
+}
+
+.ps5-status-dot.running {
+    background-color: #e8e2d6;
+}
+
+.ps5-status-dot.error {
+    background-color: #b25454;
+}
+
+.ps5-shell {
+    background: transparent;
+}
+
+/* Full-bleed wrappers used by Game Details and Trophies. */
+.ps5-screen {
+    background-color: #08090c;
+}
+
+.ps5-backdrop-art {
+    opacity: 0.82;
+}
+
+.ps5-backdrop-fallback {
+    background-image: radial-gradient(circle at 24% 12%, #332b31 0%, #15161c 48%, #08090c 100%);
+}
+
+.ps5-backdrop-shade {
+    background-image:
+        linear-gradient(180deg, rgba(8, 9, 12, 0.15) 0%, rgba(8, 9, 12, 0.55) 62%,
+                        rgba(8, 9, 12, 0.92) 100%),
+        linear-gradient(90deg, rgba(8, 9, 12, 0.82) 0%, rgba(8, 9, 12, 0.42) 55%,
+                        rgba(8, 9, 12, 0.60) 100%);
+}
+
+.ps5-trophy-shade {
+    background-image:
+        linear-gradient(180deg, rgba(8, 9, 12, 0.58) 0%, rgba(8, 9, 12, 0.78) 45%,
+                        rgba(8, 9, 12, 0.94) 100%),
+        linear-gradient(90deg, rgba(8, 9, 12, 0.76) 0%, rgba(8, 9, 12, 0.48) 60%,
+                        rgba(8, 9, 12, 0.68) 100%);
+}
+
+button.ps5-button,
+button.ps5-button-primary {
+    background-image: none;
+    border-radius: 999px;
+    box-shadow: none;
+    font-size: 13px;
+    padding: 8px 20px;
+}
+
+button.ps5-button {
+    background-color: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: rgba(255, 255, 255, 0.86);
+}
+
+button.ps5-button:hover {
+    background-color: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+}
+
+button.ps5-button-primary {
+    background-color: #f2f0ec;
+    border: none;
+    color: #0a0b0f;
+    font-weight: 700;
+}
+
+button.ps5-button-primary:hover {
+    background-color: #ffffff;
+}
+
+.ps5-scroll,
+.ps5-scroll > viewport {
+    background: transparent;
+}
+
+/* Shared typography: PS5 uses a light system sans, not display serifs. */
+.ps5-screen-eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 2.4px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.ps5-game-title {
+    font-size: 34px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    color: #ffffff;
+}
+
+.ps5-game-subtitle {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+/* --- Game Details ---------------------------------------------------------- */
+
+.ps5-details-content {
+    padding: 30px 52px 34px 52px;
+}
+
+.ps5-details-main {
+    margin-top: 2px;
+}
+
+.ps5-game-tile {
+    border-radius: 8px;
+    background-color: rgba(8, 9, 13, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.ps5-tile-fallback {
+    font-size: 64px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.ps5-game-actions {
+    padding: 20px 0 18px 0;
+}
+
+button.ps5-play {
+    background-color: #f2f0ec;
+    background-image: none;
+    border: none;
+    border-radius: 999px;
+    box-shadow: none;
+    color: #0a0b0f;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 11px 42px;
+    transition: background-color 120ms ease, color 120ms ease;
+}
+
+button.ps5-play:hover {
+    background-color: #ffffff;
+}
+
+button.ps5-play:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 3px;
+}
+
+button.ps5-play:disabled {
+    background-color: rgba(255, 255, 255, 0.16);
+    color: rgba(255, 255, 255, 0.45);
+}
+
+button.ps5-play.running {
+    background-color: #8e1f24;
+    color: #fff6f2;
+}
+
+button.ps5-play.running:hover {
+    background-color: #a83238;
+}
+
+button.ps5-secondary-action {
+    background: transparent;
+    background-image: none;
+    border: none;
+    box-shadow: none;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 13px;
+    padding: 6px 2px;
+}
+
+button.ps5-secondary-action:hover {
+    color: #ffffff;
+}
+
+.ps5-game-status {
+    padding-left: 12px;
+}
+
+.ps5-status-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f2f2f2;
+}
+
+.ps5-status-detail {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.52);
+}
+
+/* Information rows match the PS5 info screen: label left, value right. */
+.ps5-info-table {
+    margin-top: 8px;
+}
+
+.ps5-info-row {
+    padding: 11px 2px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.ps5-info-label,
+.ps5-info-value {
+    min-width: 0;
+}
+
+.ps5-info-row:last-child {
+    border-bottom: none;
+}
+
+.ps5-info-label {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.52);
+}
+
+.ps5-info-value {
+    font-size: 14px;
+    color: #f2f2f2;
+}
+
+.ps5-details-trophy-strip {
+    padding: 10px 2px 0 2px;
+}
+
+.ps5-progress trough {
+    min-height: 3px;
+    border-radius: 2px;
+    background-color: rgba(255, 255, 255, 0.18);
+}
+
+.ps5-progress progress {
+    min-height: 3px;
+    border-radius: 2px;
+    background-color: #f2f2f2;
+}
+
+.ps5-trophy-count {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.80);
+}
+
+.ps5-meta {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.50);
+}
+
+.ps5-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #efefef;
+}
+
+.ps5-activity-block {
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.ps5-activity-list {
+    margin-top: 2px;
+}
+
+.activity-row {
+    padding: 5px 2px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.activity-time {
+    font-family: 'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', monospace;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.40);
+    min-width: 46px;
+}
+
+.activity-text {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+button.text-link {
+    background: transparent;
+    background-image: none;
+    border: none;
+    box-shadow: none;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 12px;
+    padding: 2px 0;
+}
+
+button.text-link:hover {
+    color: #ffffff;
+}
+
+/* --- Trophies -------------------------------------------------------------- */
+
+.ps5-trophies-content {
+    padding: 26px 48px 20px 48px;
+}
+
+.ps5-trophy-header {
+    margin-top: 4px;
+}
+
+.ps5-game-icon {
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.ps5-trophy-stat {
+    min-width: 86px;
+}
+
+.ps5-stat-label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.52);
+}
+
+.ps5-stat-value {
+    font-size: 24px;
+    font-weight: 500;
+    color: #ffffff;
+}
+
+.ps5-grade-summary {
+    padding-left: 18px;
+}
+
+.ps5-grade {
+    min-width: 24px;
+    min-height: 24px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background-color: rgba(8, 9, 13, 0.65);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.ps5-grade-P {
+    border-color: #d8d2c6;
+    color: #f4efe6;
+    background-color: rgba(72, 68, 60, 0.55);
+}
+
+.ps5-grade-G {
+    border-color: #c6a45c;
+    color: #e8cd93;
+    background-color: rgba(72, 59, 32, 0.55);
+}
+
+.ps5-grade-S {
+    border-color: #a2a9ae;
+    color: #d3d9dd;
+    background-color: rgba(52, 56, 60, 0.55);
+}
+
+.ps5-grade-B {
+    border-color: #a87a56;
+    color: #dcb08a;
+    background-color: rgba(69, 51, 39, 0.55);
+}
+
+.ps5-grade-unknown {
+    border-color: rgba(255, 255, 255, 0.28);
+    color: rgba(255, 255, 255, 0.60);
+}
+
+.ps5-grade-count {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.82);
+}
+
+.ps5-warning {
+    padding: 8px 12px;
+    border-radius: 5px;
+    background-color: rgba(74, 59, 38, 0.55);
+    color: #dcc39a;
+    font-size: 11px;
+}
+
+.ps5-trophy-subheader {
+    padding: 4px 2px 0 2px;
+}
+
+button.ps5-sort,
+menubutton.ps5-sort,
+menubutton.ps5-sort:hover,
+menubutton.ps5-sort:active,
+menubutton.ps5-sort > button,
+menubutton.ps5-sort > button:hover {
+    background: transparent;
+    background-image: none;
+    border: none;
+    box-shadow: none;
+    color: rgba(255, 255, 255, 0.70);
+    font-size: 12px;
+    padding: 2px 0;
+    min-height: 0;
+}
+
+button.ps5-sort:hover,
+menubutton.ps5-sort:hover {
+    color: #ffffff;
+}
+
+.ps5-trophy-body {
+    margin-top: 2px;
+}
+
+button.ps5-filter {
+    background-color: rgba(255, 255, 255, 0.10);
+    background-image: none;
+    border: none;
+    border-radius: 999px;
+    box-shadow: none;
+    color: #ffffff;
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0;
+}
+
+button.ps5-filter:hover {
+    background-color: rgba(255, 255, 255, 0.18);
+}
+
+.ps5-popover-item {
+    background: transparent;
+    background-image: none;
+    border: none;
+    border-radius: 3px;
+    box-shadow: none;
+    color: #ececec;
+    font-size: 13px;
+    padding: 8px 18px;
+}
+
+.ps5-popover-item:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+}
+
+.ps5-trophy-list {
+    background: transparent;
+}
+
+list.ps5-trophy-list > row.ps5-trophy-section {
+    background: transparent;
+    border: none;
+    padding: 10px 4px 3px 4px;
+}
+
+.ps5-trophy-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+list.ps5-trophy-list > row.ps5-trophy-row {
+    background-color: rgba(6, 7, 11, 0.66);
+    border: none;
+    border-radius: 8px;
+    margin: 0 0 10px 0;
+    padding: 12px 16px;
+    min-height: 78px;
+    transition: background-color 120ms ease;
+}
+
+list.ps5-trophy-list > row.ps5-trophy-row:hover {
+    background-color: rgba(20, 21, 28, 0.82);
+}
+
+list.ps5-trophy-list > row.ps5-trophy-row.locked {
+    opacity: 0.78;
+}
+
+.ps5-trophy-icon {
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.ps5-trophy-icon.ring-P {
+    border-color: #d8d2c6;
+}
+
+.ps5-trophy-icon.ring-G {
+    border-color: #c6a45c;
+}
+
+.ps5-trophy-icon.ring-S {
+    border-color: #a2a9ae;
+}
+
+.ps5-trophy-icon.ring-B {
+    border-color: #a87a56;
+}
+
+.ps5-trophy-icon-fallback {
+    min-width: 50px;
+    min-height: 50px;
+    border-radius: 4px;
+    color: rgba(255, 255, 255, 0.80);
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.ps5-trophy-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.ps5-trophy-state {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.ps5-trophy-detail {
+    padding-left: 22px;
+    border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ps5-trophy-date {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.62);
+}
+
+.ps5-trophy-description {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.52);
+}
+
+.ps5-empty {
+    padding: 48px 32px;
+}
+
+.ps5-empty-title {
+    font-size: 20px;
+    font-weight: 500;
+    color: #ffffff;
+}
+
+/* --- Settings -------------------------------------------------------------- */
+
+.ps5-settings-menu {
+    padding: 34px 56px 40px 88px;
+}
+
+.ps5-settings-title {
+    font-size: 34px;
+    font-weight: 400;
+    letter-spacing: 0.2px;
+    color: #ffffff;
+    margin-bottom: 26px;
+}
+
+.ps5-settings-categories {
+    background: transparent;
+    margin-left: 72px;
+}
+
+list.ps5-settings-categories > row.ps5-settings-category {
+    background: transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+    padding: 10px 14px;
+    min-height: 44px;
+    transition: color 120ms ease;
+}
+
+list.ps5-settings-categories > row.ps5-settings-category:last-child {
+    border-bottom: none;
+}
+
+list.ps5-settings-categories > row.ps5-settings-category:hover .ps5-settings-label,
+list.ps5-settings-categories > row.ps5-settings-category:focus .ps5-settings-label {
+    color: #ffffff;
+}
+
+list.ps5-settings-categories > row.ps5-settings-category:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.80);
+    outline-offset: -2px;
+}
+
+.ps5-settings-icon {
+    color: rgba(255, 255, 255, 0.90);
+}
+
+.ps5-settings-label {
+    font-size: 17px;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.ps5-settings-detail {
+    background: transparent;
+}
+
+.ps5-settings-detail-head {
+    padding: 18px 40px 8px 40px;
+}
+
+button.ps5-back {
+    background: transparent;
+    background-image: none;
+    border: none;
+    border-radius: 999px;
+    box-shadow: none;
+    color: rgba(255, 255, 255, 0.70);
+    font-size: 13px;
+    padding: 7px 14px 7px 8px;
+}
+
+button.ps5-back:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+}
+
+.ps5-settings-category-title {
+    font-size: 26px;
+    font-weight: 500;
+    color: #ffffff;
+}
+
+.ps5-save-status {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.42);
+    padding: 2px 42px 8px 42px;
+}
+
+/* Key rebinding dialog */
+.ps5-rebind-area {
+    background-color: rgba(255, 255, 255, 0.055);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.ps5-rebind-hint {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.ps5-rebind-value {
+    font-size: 19px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.ps5-save-status.error {
+    color: #d08a8a;
+}
+
+/* Flat system settings rows inside each category. */
+preferencespage,
+preferencespage > scrolledwindow,
+preferencespage > scrolledwindow > viewport {
+    background: transparent;
+}
+
+preferencespage > scrolledwindow > viewport > box {
+    margin-top: 2px;
+    margin-bottom: 18px;
+}
+
+preferencesgroup > box {
+    margin-bottom: 18px;
+}
+
+preferencesgroup > box > label.title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #e9e9e9;
+    margin-bottom: 2px;
+}
+
+preferencesgroup > box > label.subtitle {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.48);
+    margin-bottom: 8px;
+}
+
+preferencesgroup .boxed-list {
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+preferencesgroup .boxed-list > row {
+    background: transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    min-height: 54px;
+}
+
+preferencesgroup .boxed-list > row:last-child {
+    border-bottom: none;
+}
+
+preferencesgroup .boxed-list > row:hover {
+    background-color: transparent;
+}
+
+preferencesgroup .boxed-list > row label.title {
+    font-size: 14px;
+    color: #ededed;
+}
+
+preferencesgroup .boxed-list > row label.subtitle {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.48);
+}
+
+switch:checked {
+    background-color: #f0f0f0;
+}
+
+switch:checked slider {
+    background-color: #111217;
+}
+
+dropdown,
+combobox {
+    border-radius: 3px;
+}
+
+/* --- Diagnostics ------------------------------------------------------------ */
+
+.diagnostics-head {
+    margin-bottom: 10px;
+}
+
+.diagnostics-toolbar {
+    margin-bottom: 8px;
+}
+
+.log-terminal-frame {
+    background-color: rgba(4, 5, 8, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+}
+
+.log-terminal-view {
+    font-family: 'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', monospace;
+    font-size: 11px;
+    background-color: transparent;
+    color: #d8d8d8;
+}
+
+.log-detail {
+    background-color: rgba(6, 7, 11, 0.58);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 6px;
+    padding: 9px 12px;
+}
+
+.log-detail-label {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.45);
+    min-width: 52px;
+}
+
+.log-detail-value {
+    font-family: 'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', monospace;
+    font-size: 11px;
+    color: #c9c9c9;
+}
+
+.ps5-meta,
+.dim-label {
+    color: rgba(255, 255, 255, 0.48);
+}
+
+.page-scroller {
+    background: transparent;
+}
+
+.page-content {
+    padding: 24px 40px 28px 40px;
+}
+
+.screen-title {
+    font-size: 30px;
+    font-weight: 400;
+    color: #ffffff;
+}
+
+.screen-subtitle {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.50);
+}
+
+/* Reduced motion: remove the few transitions the shell uses. */
+.reduce-motion button,
+.reduce-motion .ps5-nav-item,
+.reduce-motion .ps5-settings-category,
+.reduce-motion .ps5-trophy-row {
+    transition: none;
+}

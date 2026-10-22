@@ -510,8 +510,8 @@ class ComboRowTests(unittest.TestCase):
         launcher.set_language("en")
         row = self.combo(launcher.UPSCALERS, "fsr3")
         model = row.get_model()
-        self.assertEqual(model.get_string(2), "FSR 3.1 [Recommended]")
-        self.assertEqual(model.get_string(3), "DLSS (NVIDIA GeForce RTX)")
+        self.assertEqual(model.get_string(2), "FSR 3.1 (Recommended)")
+        self.assertEqual(model.get_string(3), "DLSS (RTX)")
         self.assertEqual(model.get_string(4), "TAA (native anti-aliasing)")
         self.assertEqual(model.get_string(5), "Off")
 
@@ -546,7 +546,7 @@ class GameEnvironmentTests(unittest.TestCase):
         env = launcher.game_environment(self.settings())
         self.assertEqual(env["HOST_ONLY"], "kept")
         self.assertEqual(env["BB_GAME_DIR"], str(self.game))
-        self.assertNotIn("BB_USER_DIR", env)
+        self.assertEqual(env["BB_USER_DIR"], str(self.data / "user"))
         self.assertEqual(env["BB_MODS_DIR"], str(self.data / "mods"))
         self.assertEqual(env["BB_MODS_CONFIG"], str(self.data / "mods.json"))
         self.assertEqual(env["BB_MODS_ENABLED"], "1")
@@ -883,11 +883,14 @@ class DefinitionsTests(unittest.TestCase):
     def test_upscaler_labels_are_translated(self):
         launcher.set_language("en")
         self.assertEqual([launcher.tr(label) for label, _ in launcher.UPSCALERS],
-                         ["FSR 4 [Experimental ⚠️]", "FSR 4.1.1 [Experimental ⚠️]", "FSR 3.1 [Recommended]", "DLSS (NVIDIA GeForce RTX)",
+                         ["FSR 4 (Experimental)", "FSR 4.1.1 (Experimental)",
+                          "FSR 3.1 (Recommended)", "DLSS (RTX)",
                           "TAA (native anti-aliasing)", "Off"])
         launcher.set_language("ru")
         self.assertEqual([launcher.tr(label) for label, _ in launcher.UPSCALERS],
-                         [label for label, _ in launcher.UPSCALERS])
+                         ["FSR 4 (экспериментально)", "FSR 4.1.1 (экспериментально)",
+                          "FSR 3.1 (рекомендуется)", "DLSS (RTX)",
+                          "TAA (нативное сглаживание)", "Выключен"])
 
     def test_ini_upscaler_default_is_a_known_option(self):
         self.assertEqual(launcher.INI_DEFAULTS["upscaler"], "dlss")
@@ -1450,28 +1453,292 @@ class CinematicLauncherAndLocalizationTests(unittest.TestCase):
         app.connect("activate", lambda a: None)
         win = launcher.LauncherWindow(app)
 
-        # Verify 6-page navigation stack
-        expected_pages = ["home", "graphics", "game", "downloads", "settings", "log"]
-        self.assertEqual(list(win.pages.keys()), expected_pages)
+        # The shell has exactly three PS5 destinations.
+        self.assertEqual(list(win.pages.keys()), ["details", "trophies", "settings"])
+        self.assertEqual(list(win.nav_buttons.keys()), ["details", "trophies", "settings"])
+        self.assertTrue(hasattr(win, "shell_status_button"))
+        win.show_page("trophies")
+        self.assertTrue(win.nav_buttons["trophies"].has_css_class("active"))
 
-        # Verify hero elements
-        self.assertTrue(hasattr(win, "hero_box"))
+        # Game Details keeps its real summary bindings.
         self.assertTrue(hasattr(win, "hero_launch_button"))
         self.assertTrue(hasattr(win, "hero_game_summary"))
         self.assertTrue(hasattr(win, "hero_graphics_summary"))
         self.assertTrue(hasattr(win, "hero_hunter_summary"))
+        self.assertTrue(hasattr(win, "hero_trophy_summary"))
         self.assertTrue(hasattr(win, "hero_fsr_summary"))
+        self.assertTrue(hasattr(win, "activity_list"))
 
-        # Verify dedicated language selector exists in settings
+        # Dedicated language selector and real setting groups remain reachable.
         self.assertTrue(hasattr(win, "ui_language_row"))
         self.assertEqual(win.ui_language_row.values, [val for _, val in launcher.UI_LANGUAGES])
+        for group in ("render_group", "upscale_group", "quality_group", "compat_group",
+                      "perf_group"):
+            self.assertTrue(hasattr(win, group))
 
-        # Verify graphics settings 5 groups
-        self.assertTrue(hasattr(win, "render_group"))
-        self.assertTrue(hasattr(win, "upscale_group"))
-        self.assertTrue(hasattr(win, "quality_group"))
-        self.assertTrue(hasattr(win, "compat_group"))
-        self.assertTrue(hasattr(win, "perf_group"))
+        # Removed inert preferences must not exist anymore.
+        for dead in ("start_minimized_row", "close_to_tray_row", "check_updates_row",
+                     "ui_scale_row", "theme_row", "confirm_launch_row"):
+            self.assertFalse(hasattr(win, dead), dead)
+
+        # Settings uses the full PS5 category menu plus drill-down pages.
+        expected = ["display", "graphics", "upscaling", "performance", "compatibility",
+                    "controller", "game_data", "launcher", "diagnostics"]
+        self.assertEqual(win.settings_category_values, expected)
+        self.assertEqual(list(win.settings_category_pages.keys()), expected)
+        win.show_settings_category("game_data")
+        self.assertEqual(win.settings_category_title.get_text(), "Game & Data")
+        self.assertEqual(win.settings_view_stack.get_visible_child_name(), "category")
+        self.assertEqual(win.settings_category_stack.get_visible_child_name(), "game_data")
+        win.show_settings_menu()
+        self.assertEqual(win.settings_view_stack.get_visible_child_name(), "menu")
+
+    def test_playtime_format_and_live_display(self):
+        language = launcher.language()
+        launcher.set_language("en")
+        try:
+            self.assertEqual(launcher.format_playtime(30), "Less than a minute")
+            self.assertEqual(launcher.format_playtime(90), "1 m")
+            self.assertEqual(launcher.format_playtime(3720), "1 h 2 m")
+            app = launcher.Adw.Application(application_id="io.github.bbport.TestPlaytime")
+            app.connect("activate", lambda a: None)
+            win = launcher.LauncherWindow(app)
+            launcher.set_language("en")
+            with patch.object(launcher, "load_playtime", return_value=3720):
+                win.update_playtime_summary()
+            self.assertEqual(win.hero_playtime_summary.get_text(), "1 h 2 m")
+        finally:
+            launcher.set_language(language)
+
+    def test_session_duration_is_added_and_recorded(self):
+        import time
+
+        app = launcher.Adw.Application(application_id="io.github.bbport.TestSession")
+        app.connect("activate", lambda a: None)
+        win = launcher.LauncherWindow(app)
+        language = launcher.language()
+        launcher.set_language("en")
+        try:
+            win.session_started_at = time.time() - 90
+            with patch.object(launcher, "add_playtime", return_value=90) as add, \
+                    patch.object(win, "record_activity") as record:
+                win._finish_session()
+        finally:
+            launcher.set_language(language)
+        add.assert_called_once()
+        record.assert_called_once_with("session", "Played for 1 m")
+        self.assertIsNone(win.session_started_at)
+
+    def test_activity_display_filters_to_game_events(self):
+        app = launcher.Adw.Application(application_id="io.github.bbport.TestActivityFeed")
+        app.connect("activate", lambda a: None)
+        win = launcher.LauncherWindow(app)
+        events = [
+            {"time": 5, "kind": "trophy", "text": "Trophy unlocked: Cleric Beast"},
+            {"time": 4, "kind": "launcher", "text": "Launcher started"},
+            {"time": 3, "kind": "session", "text": "Played for 1 h"},
+            {"time": 2, "kind": "game", "text": "Game folder selected"},
+        ]
+        with patch.object(launcher, "load_events", return_value=events):
+            win.update_recent_activity()
+        texts = []
+        row = win.activity_list.get_first_child()
+        while row:
+            label = row.get_first_child()
+            while label:
+                if hasattr(label, "get_text"):
+                    texts.append(label.get_text())
+                label = label.get_next_sibling()
+            row = row.get_next_sibling()
+        self.assertIn("Trophy unlocked: Cleric Beast", texts)
+        self.assertIn("Played for 1 h", texts)
+        self.assertNotIn("Launcher started", texts)
+        self.assertNotIn("Game folder selected", texts)
+
+    def test_trophies_are_grouped_into_unlocked_and_locked(self):
+        app = launcher.Adw.Application(application_id="io.github.bbport.TestTrophyGroups")
+        app.connect("activate", lambda a: None)
+        win = launcher.LauncherWindow(app)
+
+        def entry(trophy_id, earned):
+            return types.SimpleNamespace(
+                id=trophy_id, name=f"Trophy {trophy_id}", description="",
+                grade="B", hidden=False, icon=None, earned=earned,
+                unlocked_at=1730000000 if earned else None, name_available=True)
+
+        report = types.SimpleNamespace(
+            entries=(entry(1, True), entry(2, True), entry(3, False), entry(4, False)),
+            set_title="Bloodborne", metadata_available=True, metadata_complete=True,
+            reason=None, earned=2, total=4, completion=50,
+            grade_counts={"P": 0, "G": 0, "S": 0, "B": 4}, local_unlocks=2,
+            orphan_unlocks=(), stale=False)
+        language = launcher.language()
+        launcher.set_language("en")
+        try:
+            with patch.object(launcher, "load_trophy_report", return_value=report), \
+                    patch.object(win, "_record_new_trophies", lambda _report: None):
+                win.refresh_trophies()
+        finally:
+            launcher.set_language(language)
+
+        rows = []
+        child = win.trophy_list.get_first_child()
+        while child:
+            rows.append(child)
+            child = child.get_next_sibling()
+        sections = [row for row in rows if row.has_css_class("ps5-trophy-section")]
+        self.assertEqual(len(sections), 2)
+        self.assertEqual(len([row for row in rows if row.has_css_class("ps5-trophy-row")]), 4)
+        self.assertIn("Unlocked (2)", sections[0].get_child().get_first_child().get_text())
+        self.assertIn("Locked (2)", sections[1].get_child().get_first_child().get_text())
+
+    def test_key_binding_parsing_and_sdl_names(self):
+        self.assertEqual(launcher.parse_key_binding(None, "W", ""), ("W", ""))
+        self.assertEqual(launcher.parse_key_binding("E, Mouse2", "", ""), ("E", "Mouse2"))
+        self.assertEqual(launcher.parse_key_binding("none", "W", "Mouse1"), ("", ""))
+        self.assertEqual(launcher.format_key_binding("E", "Mouse2"), "E, Mouse2")
+        self.assertEqual(launcher.format_key_binding("", ""), "none")
+        self.assertEqual(launcher.sdl_key_name(launcher.Gdk.KEY_w), "W")
+        self.assertEqual(launcher.sdl_key_name(launcher.Gdk.KEY_Shift_L), "Left Shift")
+        self.assertEqual(launcher.sdl_key_name(launcher.Gdk.KEY_Escape), "Escape")
+        self.assertEqual(launcher.sdl_key_name(launcher.Gdk.KEY_space), "Space")
+        self.assertEqual(launcher.sdl_key_name(launcher.Gdk.KEY_F1), "F1")
+        self.assertEqual(launcher.sdl_key_name(launcher.Gdk.KEY_KP_1), "Keypad 1")
+        self.assertEqual(launcher.sdl_key_name(launcher.Gdk.KEY_exclam), "1")
+
+    def test_key_bindings_persist_and_stay_unique(self):
+        app = launcher.Adw.Application(application_id="io.github.bbport.TestBindings")
+        app.connect("activate", lambda a: None)
+        language = launcher.language()
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(launcher, "DATA_DIR", Path(folder)):
+                win = launcher.LauncherWindow(app)
+                launcher.set_language("en")
+                try:
+                    self.assertEqual(win.binding_display("move_forward"), "W")
+                    win.save_key_binding("interact", "G", "")
+                    ini = (Path(folder) / "bbport.ini").read_text(encoding="utf-8")
+                    self.assertIn("key_interact=G", ini)
+                    self.assertEqual(win.binding_display("interact"), "G")
+                    self.assertEqual(win.binding_display("gestures"), "Unbound")
+                    win.on_reset_key_bindings()
+                    ini = (Path(folder) / "bbport.ini").read_text(encoding="utf-8")
+                    self.assertNotIn("key_interact", ini)
+                    self.assertEqual(win.binding_display("interact"), "E")
+                finally:
+                    launcher.set_language(language)
+
+    def test_key_capture_dialog_constructs(self):
+        app = launcher.Adw.Application(application_id="io.github.bbport.TestCaptureDialog")
+        app.connect("activate", lambda a: None)
+        win = launcher.LauncherWindow(app)
+        with patch.object(launcher.Adw.Window, "present", lambda _window: None):
+            win.open_key_capture("interact")
+
+    def test_preset_belongs_to_upscaling_page(self):
+        app = launcher.Adw.Application(application_id="io.github.bbport.TestPresetPage")
+        app.connect("activate", lambda a: None)
+        win = launcher.LauncherWindow(app)
+        upscaling = win.settings_category_pages["upscaling"]
+        graphics = win.settings_category_pages["graphics"]
+        self.assertIs(win.preset_row.get_ancestor(launcher.Adw.PreferencesPage), upscaling)
+        self.assertIs(win.sharpen_row.get_ancestor(launcher.Adw.PreferencesPage), graphics)
+
+    def test_reduce_motion_applies_gtk_setting(self):
+        app = launcher.Adw.Application(application_id="io.github.bbport.TestMotion")
+        app.connect("activate", lambda a: None)
+        win = launcher.LauncherWindow(app)
+        win.set_reduce_motion(True)
+        self.assertTrue(win.has_css_class("reduce-motion"))
+        settings = launcher.Gtk.Settings.get_default()
+        if settings is not None:
+            self.assertFalse(settings.get_property("gtk-enable-animations"))
+        win.set_reduce_motion(False)
+        self.assertFalse(win.has_css_class("reduce-motion"))
+
+    def test_log_filters_and_timestamps_are_real(self):
+        app = launcher.Adw.Application(application_id="io.github.bbport.TestLogFilter")
+        app.connect("activate", lambda a: None)
+        win = launcher.LauncherWindow(app)
+        win.log_entries = [
+            {"time": "10:00:00", "level": "INFO", "text": "info line"},
+            {"time": "10:00:01", "level": "ERROR", "text": "error line"},
+        ]
+        win.log_level_drop.set_selected(3)  # ERROR
+        win.refresh_log_view()
+        buffer = win.log_view.get_buffer()
+        text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
+        self.assertIn("error line", text)
+        self.assertNotIn("info line", text)
+        win.log_level_drop.set_selected(0)  # All
+        win.log_timestamps.set_active(False)
+        win.refresh_log_view()
+        text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
+        self.assertIn("info line", text)
+        self.assertNotIn("[10:00:00]", text)
+
+    def test_launch_stays_on_details_and_guards_duplicates(self):
+        import tempfile
+
+        app = launcher.Adw.Application(application_id="io.github.bbport.TestLaunchState")
+        app.connect("activate", lambda a: None)
+        win = launcher.LauncherWindow(app)
+        win.show_page("details")
+
+        class FakeProcess:
+            def __init__(self):
+                self.forced = False
+
+            def get_identifier(self):
+                return "4242"
+
+            def wait_async(self, *_args):
+                return None
+
+            def get_stdout_pipe(self):
+                return object()
+
+            def get_if_exited(self):
+                return False
+
+            def get_if_signaled(self):
+                return False
+
+            def force_exit(self):
+                self.forced = True
+
+        process = FakeProcess()
+        spawned = []
+
+        class FakeLauncher:
+            def set_environ(self, _env):
+                pass
+
+            def set_cwd(self, _cwd):
+                pass
+
+            def spawnv(self, argv):
+                spawned.append(argv)
+                return process
+
+        fake = FakeLauncher()
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / "eboot.bin").write_text("x", encoding="utf-8")
+            win.settings["game_dir"] = folder
+            with patch.object(launcher.Gio.SubprocessLauncher, "new", return_value=fake), \
+                    patch.object(launcher.Gio.DataInputStream, "new",
+                                 return_value=types.SimpleNamespace()), \
+                    patch.object(win, "read_line"), patch.object(win, "store"), \
+                    patch.object(win, "record_activity"), \
+                    patch.object(launcher.os, "killpg"), \
+                    patch.object(launcher.GLib, "timeout_add_seconds", return_value=None):
+                win.on_launch(None)
+                self.assertEqual(win.stack.get_visible_child_name(), "details")
+                self.assertEqual(win.launch_state, "running")
+                self.assertEqual(len(spawned), 1)
+                win.on_launch(None)
+                self.assertEqual(win.launch_state, "stopping")
+                self.assertEqual(len(spawned), 1)
 
     def test_fsr4_rx6600m_warning_and_fsr31_recommended(self):
         app = launcher.Adw.Application(application_id="io.github.bbport.TestFsrLabels")

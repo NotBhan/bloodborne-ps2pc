@@ -15,13 +15,16 @@ This project is derived from the work of [Jgamrot](https://github.com/Jgamrot/bl
 
 The objective of this fork is to take the port's barebones Linux launcher and develop it into a fully featured native GTK4/libadwaita control surface with the same feature set as the Windows launcher, while keeping the optimized Vulkan upscaling path:
 
-1. **Refined Linux Launcher (built out from the barebones launcher)**:
-   - Started from the port's minimal Linux launcher and grew it into a complete control surface: Overview, Graphics, Display, Game & saves, Mods & patches, Online, System, Diagnostics, and Setup.
-   - Matched the Windows launcher's feature set: graphics presets and FSR 3.1/FSR 4/DLSS selection, internal-resolution scaling and persistence, mods and patches, Hunter's Dream sign-in and co-op setup, launch diagnostics, restart supervision, and desktop integration.
-   - Added strict XDG configuration, a six-language UI, internal-resolution calculations, and a native GTK4/libadwaita layout on top of the original launcher.
+1. **Refined Linux Launcher (PS5-style, built out from the barebones launcher)**:
+   - A game-first shell with exactly three destinations: **Game Details** (full-bleed key art, real launch/readiness state, graphics and save summary, honest activity journal), **Trophies** (local cache and unlock history with truthful unavailable states), and **Settings** (display, graphics, upscaling, performance, compatibility, controller, game & data, launcher preferences, diagnostics).
+   - Matched the Windows launcher's feature set: graphics presets and FSR 3.1/FSR 4/DLSS selection, internal-resolution scaling and persistence, mods and patches, launch diagnostics, restart supervision, and desktop integration. Logs and diagnostics live inside Settings rather than a competing primary page.
+   - Keyboard and mouse rebinding in **Settings → Controller**, including mouse buttons and wheel inputs. Bindings are written as `key_<action>=` in `bbport.ini`, keep one key and one mouse input per action, and apply on the next launch.
+   - Added strict XDG configuration, a six-language UI, internal-resolution calculations, a debounced settings save path, and a native GTK4/libadwaita layout on top of the original launcher.
+   - Trophy reporting is read-only and local ([`launcher/bbport_trophies.py`](launcher/bbport_trophies.py)); the launcher never invents names, dates, rarity, or completion. The activity journal ([`launcher/bbport_activity.py`](launcher/bbport_activity.py)) records only real launch, folder, trophy, and asset events.
    - Shader precompile controls: the automatic pre-build on launch (`BB_SHADER_PREBUILD`) and **Precompile shaders now**, which runs the pipeline warm-up in a short game run and exits. Shaders never recorded yet still compile once, the first time they are drawn.
    - Trophy keys import in **Game → Trophy keys**: names, descriptions, grades and Gamerscore from your own trophy pack, plus the local unlock history and automatic platinum.
-   - Discord Rich Presence: `run.sh` starts the bundled companion beside the game (toggle in the graphics performance settings); it shows the area, level, Echoes and Insight.
+   - Discord Rich Presence: `run.sh` starts the bundled companion beside the game (toggle in the graphics performance settings). It reports the game name and hunter level, and switches to a Platinum state when every trophy is earned; area, Echoes and Insight are no longer shown.
+   - The trophy list separates **Unlocked** and **Locked** entries. Game Details shows total play time and a game-only activity feed: sessions and real trophy unlocks, never launcher/settings noise.
    - The Windows launcher is not replaced or purged: it remains maintained in the Windows tree/branch (`windows_laucnher/`), and both launchers share the renderer, settings keys (`bbport.ini`), and preparation scripts.
    - Linux packaging (`launcher/bb-launcher.sh`, `--install-desktop`, Nix/AppImage) stays in this branch; Windows packaging stays with the Windows launcher.
    - Shared online network and Hunter's Dream account logic live in [`launcher/bbport_net.py`](launcher/bbport_net.py); bundled prompt mods are in [`bundled/`](bundled/) and [`mods/`](mods/); third-party licensing is preserved in [`licenses/`](licenses/).
@@ -210,12 +213,12 @@ Run all validation test suites:
 # 1. Native C/C++ engine, Vulkan, and math tests:
 ./build.sh --test
 
-# 2. Python launcher, network, mod, and patch tests (369 tests, 48 skipped, 0 failures):
+# 2. Python launcher, network, mod, and patch tests (421 tests, 48 skipped, 0 failures):
 python3 -m unittest discover tests
 ```
 
-- **Linux Launcher Tests** ([`tests/test_launcher_linux.py`](tests/test_launcher_linux.py)):
-  Validates GTK4/Adw row generation, XDG path resolution, INI roundtrips, atomic writes, control scheme switching, FSR support probing, internal resolution calculations, and UI subtitle updates.
+- **Linux Launcher Tests** ([`tests/test_launcher_linux.py`](tests/test_launcher_linux.py), [`tests/test_launcher_trophies.py`](tests/test_launcher_trophies.py), [`tests/test_launcher_activity.py`](tests/test_launcher_activity.py)):
+  Validates the three-destination shell, PS5 settings navigation, launch-state guards, log filtering, trophy cache/history parsing and unavailable states, activity journaling, GTK4/Adw row generation, XDG path resolution, INI roundtrips, atomic writes, control scheme switching, FSR support probing, and internal resolution calculations.
 - **Supervisor & Restart Tests** ([`tests/test_run_settings.py`](tests/test_run_settings.py)):
   Validates supervisor handling of exit code `85`, argument and environment preservation, single-restart bounding, and normal exit isolation.
 - **Scene Resolution & Upscaler Fallback Tests** ([`tests/test_scene_resolution.cpp`](tests/test_scene_resolution.cpp), [`tests/test_upscaler_support.cpp`](tests/test_upscaler_support.cpp)):

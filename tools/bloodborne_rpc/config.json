@@ -8,12 +8,9 @@
   "small_image": "",
   "buttons": [],
   "offline_only": false,
+  "user_dir": "",
   "show": {
-    "titles": true,
-    "echoes": true,
-    "insight": true,
-    "level_up": true,
-    "session_levels": true,
-    "attributes_tooltip": true
+    "level": true,
+    "platinum": true
   }
 }
