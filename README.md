@@ -143,8 +143,8 @@ Both the native GTK4/libadwaita launcher and in-game menu follow 5 clear categor
 ### 1. Build the Native Port
 Clone the repository recursively with submodules:
 ```bash
-git clone --recursive https://github.com/NotBhan/bloodborne_pc_notbhan.git
-cd bloodborne_pc_notbhan
+git clone --recursive https://github.com/NotBhan/bloodborne-ps2pc.git
+cd bloodborne-ps2pc
 ```
 
 Compile the Vulkan runtime, loader, and C tools:

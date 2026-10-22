@@ -1,7 +1,7 @@
 # Changelog
 
 Windows releases of this fork, newest first. Each is on the
-[NotBhan release page](https://github.com/NotBhan/bloodborne_pc_notbhan/releases) as
+[NotBhan release page](https://github.com/NotBhan/bloodborne-ps2pc/releases) as
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 

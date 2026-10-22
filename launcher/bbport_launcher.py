@@ -85,7 +85,7 @@ CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") 
 CONFIG_FILE = CONFIG_DIR / "settings.json"
 MAX_LOG_LINES = 5000
 VERSION = "1.10.7"
-REPO_URL = "https://github.com/NotBhan/bloodborne_pc_notbhan"
+REPO_URL = "https://github.com/NotBhan/bloodborne-ps2pc"
 ISSUES_URL = f"{REPO_URL}/issues"
 THEME_FILE = LAUNCHER_DIR / "theme.css"
 
