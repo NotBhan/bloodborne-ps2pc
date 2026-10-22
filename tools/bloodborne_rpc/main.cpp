@@ -40,8 +40,11 @@ using json = nlohmann::json;
 using clk = std::chrono::steady_clock;
 
 constexpr uintptr_t GAME_DATA_MAN = 0x553B130;
-constexpr uintptr_t MAP_ID_ADDR = 0x0553B148;
-constexpr uintptr_t BOSS_GAUGE_ADDR = 0x05562878;
+constexpr uintptr_t WORLD_CHR_MAN = 0x553E878;
+constexpr int CHR_BLOCK = 0x3F8;
+// 0x5562878 is the port's quick-menu slot (src/runtime_map.c), not a boss gauge.
+// Boss names stay disabled until a verified boss-gauge offset is available.
+constexpr uintptr_t BOSS_GAUGE_ADDR = 0;
 constexpr int PGD_HP = 0x14, PGD_MAXHP = 0x18;
 constexpr int PGD_INSIGHT = 0x84, PGD_LEVEL = 0x90, PGD_ECHOES = 0x94;
 constexpr int PGD_READ_SIZE = 0x98;
@@ -326,31 +329,21 @@ static uintptr_t find_base(const Process& p, const std::vector<uintptr_t>& bases
 }
 
 static uint32_t ReadCurrentMapId(const Process& p, uintptr_t base) {
-    uint64_t map_list = 0;
-    if (!p.read(base + MAP_ID_ADDR, map_list) || !map_list || map_list < 0x10000) return 0;
-
-    int32_t index = 0;
-    if (!p.read(map_list + 0x20, index)) return 0;
-
-    uint64_t map_array = 0;
-    if (!p.read(map_list + 0x10, map_array) || !map_array || map_array < 0x10000) return 0;
-
-    int32_t count = 0;
-    if (!p.read(map_array + 0x18, count) || count <= 0 || index < 0 || index >= count) return 0;
-
-    uint64_t entries = 0;
-    if (!p.read(map_array + 0x20, entries) || !entries || entries < 0x10000) return 0;
-
-    uint64_t entry = entries + (index * 0xA0);
-    uint32_t packed_map = 0;
-    if (!p.read(entry + 0x08, packed_map)) return 0;
-
-    return packed_map;
+    // The port's own chain (src/runtime_map.c, runtime_atlas_state.c):
+    // WorldChrMan -> local ChrIns -> current block/map id.
+    uint64_t man = 0;
+    if (!p.read(base + WORLD_CHR_MAN, man) || !man || man < 0x10000) return 0;
+    uint64_t chr = 0;
+    if (!p.read(man + 0x60, chr) || !chr || chr < 0x10000) return 0;
+    uint32_t block = 0;
+    if (!p.read(chr + CHR_BLOCK, block) || block == 0xffffffffu) return 0;
+    return block;
 }
 
 struct Stats { int level, insight, echoes, hp, maxhp; uint32_t map_id; std::string area_name; std::string boss_name; std::array<int, 6> attrs; };
 
 static std::string GetBossName(const Process& p, uintptr_t base) {
+    if (!BOSS_GAUGE_ADDR) return "";
     uint64_t gauge = 0; if (!p.read(base + BOSS_GAUGE_ADDR, gauge) || !gauge || gauge < 0x10000) return "";
     for (int i = 0; i < 3; ++i) {
         int32_t handle = -1; if (p.read(gauge + 0x165C + i * 0x14, handle) && handle != -1) {
@@ -369,7 +362,10 @@ static std::optional<Stats> read_stats(const Process& p, uintptr_t base) {
     for (int i = 0; i < 6; ++i) s.attrs[i] = i32(PGD_ATTR_DEFS[i].off);
     for (int a : s.attrs) if (a < 1 || a > 99) return std::nullopt;
 
-    s.level = i32(PGD_LEVEL); int sum = 0; for (int a : s.attrs) sum += a; if (s.level != sum - 50) return std::nullopt;
+    // Bloodborne's level is not a fixed sum of the attributes: each origin has its own
+    // starting level and stat total, so only the plausible range is a safe sanity gate.
+    s.level = i32(PGD_LEVEL);
+    if (s.level < 1 || s.level > 999) return std::nullopt;
     s.insight = i32(PGD_INSIGHT); s.echoes = i32(PGD_ECHOES); s.hp = i32(PGD_HP); s.maxhp = i32(PGD_MAXHP);
 
     if (s.insight < 0 || s.insight > 999 || s.echoes < 0 || s.echoes > 999999999 || s.maxhp <= 0 || s.maxhp >= 100000 || s.hp < 0 || s.hp > s.maxhp) return std::nullopt;
@@ -596,7 +592,13 @@ static void run(const Config& cfg) {
         if (companion && !pid_alive(pid)) { log("Game closed before attachment, exiting."); return; }
         Process proc; if (!proc.open(pid)) { log("Failed to open process memory. Retrying..."); std::this_thread::sleep_for(std::chrono::seconds(10)); continue; }
         uintptr_t base = find_base(proc, cfg.image_bases); if (!base) { log("Game memory not ready. Retrying..."); std::this_thread::sleep_for(std::chrono::seconds(5)); continue; }
-        DiscordIpc discord; while (pid_alive(pid, check_name)) { if (discord.connect_pipe(cfg.client_id)) break; log("Failed to connect to Discord. Retrying in 5s..."); std::this_thread::sleep_for(std::chrono::seconds(5)); }
+        DiscordIpc discord;
+        int failures = 0;
+        while (pid_alive(pid, check_name)) {
+            if (discord.connect_pipe(cfg.client_id)) break;
+            if (failures++ % 12 == 0) log("Failed to connect to Discord. Retrying in 5s...");
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+        }
         log("Attached to PID " + std::to_string(pid) + " (Base: " + hex(base) + ")");
         const int64_t start_s = (int64_t)std::time(nullptr); Session session; json last_payload; auto last_sent = clk::time_point{};
         while (pid_alive(pid, check_name)) {

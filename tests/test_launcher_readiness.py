@@ -60,10 +60,12 @@ class LauncherReadinessTests(unittest.TestCase):
             user = root / 'user'
             source = root / 'keys.json'
             source.write_text(json.dumps({'TrophyKeySet': {'ReleaseTrophyKey': 'ab' * 16}}),
-                              encoding='utf-8')
+                              encoding='utf-8-sig')  # editors on Windows add a BOM
             target = import_trophy_key(source, user)
             self.assertEqual(target, user / 'keys.json')
-            self.assertEqual(target.read_text(encoding='utf-8'), source.read_text(encoding='utf-8'))
+            self.assertFalse(target.read_bytes().startswith(b'\xef\xbb\xbf'))
+            self.assertEqual(json.loads(target.read_text(encoding='utf-8')),
+                             {'TrophyKeySet': {'ReleaseTrophyKey': 'ab' * 16}})
             bad = root / 'bad.json'
             bad.write_text('{"TrophyKeySet":{"ReleaseTrophyKey":"nope"}}', encoding='utf-8')
             with self.assertRaises(ValueError):

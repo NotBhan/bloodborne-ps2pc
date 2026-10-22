@@ -14,7 +14,8 @@ Planned work is in [ROADMAP.md](ROADMAP.md).
 - **Discord Rich Presence:** the bundled companion now builds and runs on Linux (Unix-socket
   IPC, `/proc/<pid>/mem`, same-user ptrace allowed by the game). `run.sh` starts it with the
   game and stops it on exit; the launcher has a toggle and the presence works offline, online
-  and in co-op.
+  and in co-op. It shows the area, level, Echoes and Insight; boss detection waits for a
+  verified boss-gauge offset.
 - **Shader precompile:** the performance settings now expose the automatic shader pre-build
   (`BB_SHADER_PREBUILD`) and a **Precompile shaders now** action. It runs the pipeline warm-up
   in a short game run (`BB_PRECOMPILE_ONLY`) that exits by itself, so recorded shaders no

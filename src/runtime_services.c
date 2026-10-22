@@ -399,7 +399,7 @@ static ABI int32_t trophy_info(int32_t ctx,int32_t handle,int32_t id,void *detai
     if (!found) return TROPHY_INVALID_ID;
     detail->trophy_id=id;
     detail->trophy_grade=trophy.grade;
-    detail->group_id=1;
+    detail->group_id=0; /* Bloodborne's base-game group; the TRP parser keeps no gid */
     detail->hidden=trophy.hidden ? 1 : 0;
     snprintf(detail->name,sizeof(detail->name),"%s",trophy.name);
     snprintf(detail->description,sizeof(detail->description),"%s",trophy.description);

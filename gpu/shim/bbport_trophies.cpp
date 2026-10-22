@@ -100,8 +100,14 @@ std::array<unsigned char, 16> ReadKey(const fs::path& user_dir, bool& valid) {
     valid = false;
     std::array<unsigned char, 16> result{};
     try {
-        const auto data = ReadFile(user_dir / "keys.json", 64 * 1024);
+        auto data = ReadFile(user_dir / "keys.json", 64 * 1024);
         if (data.empty()) return result;
+        // Editors on Windows often save JSON with a UTF-8 BOM; nlohmann refuses it.
+        if (data.size() >= 3 && static_cast<unsigned char>(data[0]) == 0xEF &&
+            static_cast<unsigned char>(data[1]) == 0xBB &&
+            static_cast<unsigned char>(data[2]) == 0xBF) {
+            data.erase(0, 3);
+        }
         const auto root = json::parse(data);
         const auto hex = root.at("TrophyKeySet").at("ReleaseTrophyKey").get<std::string>();
         if (hex.size() != 32) return result;
