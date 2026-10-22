@@ -45,7 +45,7 @@ See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
   can import `keys.json`.
 - **Discord Rich Presence.** The bundled companion runs on Windows and Linux, starts with the
   game when present (launcher toggle), and shows the game name and hunter level. It switches to
-  **Platinum Trophy Earned** when every trophy in the local cache is unlocked.
+  **Platinum Trophy Earned** when the platinum trophy is unlocked.
 - **Shader precompile controls.** A switch controls the automatic pre-build, and **Precompile
   shaders now** runs the pipeline warm-up in a short game run that exits by itself. Recorded
   shaders no longer wait for the first fight or area.

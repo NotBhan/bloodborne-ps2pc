@@ -504,7 +504,7 @@ static fs::path trophy_user_dir(const Config& cfg) {
     return g_exe_dir / ".." / ".." / "user";
 }
 
-static bool all_trophies_earned(const Config& cfg) {
+static bool platinum_trophy_earned(const Config& cfg) {
     try {
         const fs::path user = trophy_user_dir(cfg);
         std::ifstream meta_file(user / "trophy_cache" / "metadata.json");
@@ -521,15 +521,13 @@ static bool all_trophies_earned(const Config& cfg) {
             if (!(in >> id >> stamp)) continue;
             if (id >= 0 && id < 128 && stamp > 0) earned.insert(static_cast<int>(id));
         }
-        bool any = false;
         for (const auto& entry : meta["entries"]) {
-            if (!entry.is_object()) continue;
+            if (!entry.is_object() || entry.value("grade", "") != "P") continue;
             const auto id = entry.find("id");
             if (id == entry.end() || !id->is_number_integer()) continue;
-            any = true;
-            if (!earned.count(id->get<int>())) return false;
+            if (earned.count(id->get<int>())) return true;
         }
-        return any;
+        return false;
     } catch (...) {
         return false;
     }
@@ -542,7 +540,7 @@ static bool platinum_earned(const Config& cfg) {
     if (initialized && now - checked < std::chrono::seconds(15)) return value;
     initialized = true;
     checked = now;
-    value = all_trophies_earned(cfg);
+    value = platinum_trophy_earned(cfg);
     return value;
 }
 

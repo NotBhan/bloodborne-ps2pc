@@ -13,7 +13,7 @@ Planned work is in [ROADMAP.md](ROADMAP.md).
 - **Activity and play time:** Overview now shows total play time and only real game activity
   (sessions and trophy unlocks). Launcher/settings events stay out of the feed.
 - **Discord Rich Presence:** presence is the game name and hunter level, with a
-  **Platinum Trophy Earned** state when every cached trophy is unlocked. Echoes, Insight,
+  **Platinum Trophy Earned** state when the platinum trophy is unlocked. Echoes, Insight,
   area/boss text and the attribute tooltip are no longer published.
 - **GUI consistency:** the trophy summary and activity rows follow the existing launcher
   typography and spacing; long names/descriptions elide instead of expanding the layout.

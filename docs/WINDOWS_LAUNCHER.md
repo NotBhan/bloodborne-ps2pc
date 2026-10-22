@@ -85,8 +85,8 @@ The classic Tk launcher keeps both controls on its **Advanced** page.
 When `companions/Discord Rich Presence/BloodborneRPC.exe` is present, the launcher starts it
 with the game. **System → Engine → Discord Rich Presence** (classic launcher: **Advanced**;
 default on, `BB_DISCORD_RPC=0` disables it) controls it. It shows the game name and hunter
-level, and switches to **Platinum Trophy Earned** when every trophy in the local cache is
-unlocked; area names, Echoes and Insight are not published. Its settings are in `config.json`
+level, and switches to **Platinum Trophy Earned** when the platinum trophy is unlocked;
+area names, Echoes and Insight are not published. Its settings are in `config.json`
 next to the executable and its log is `%LOCALAPPDATA%\bbport-launcher\rpc.log`. The companion
 reads the game's memory and the local `trophies.txt` / `trophy_cache/metadata.json` (through
 `BB_USER_DIR`, or `user_dir` in `config.json`).
