@@ -55,6 +55,37 @@ class LauncherPageTests(unittest.TestCase):
         self.assertEqual(backend.launcher_page_for('Online', "The Hunter's Dream"), 'Online')
         self.assertEqual(backend.launcher_page_for('System', 'Logs'), 'Logs')
 
+    def test_launcher_categories_cover_every_section(self):
+        mapped = [(group['category'], group['section'])
+                  for category in backend.LAUNCHER_CATEGORIES
+                  for group in category.get('groups', [])]
+        expected = {(category, section) for category, sections in backend.SETTINGS_SECTIONS.items()
+                    for section, _ in sections}
+        # Logs is the Diagnostics category, not a settings group.
+        expected.discard(('System', 'Logs'))
+        self.assertEqual(set(mapped), expected)
+        keys = [category['key'] for category in backend.LAUNCHER_CATEGORIES]
+        self.assertEqual(len(keys), len(set(keys)), 'two categories share a key')
+        for category in backend.LAUNCHER_CATEGORIES:
+            self.assertTrue(category['label'] and category['icon'], category['key'])
+            self.assertTrue(category.get('groups') or category.get('diagnostics'), category['key'])
+
+    def test_launcher_categories_split_fields_without_repeating(self):
+        claimed = {}
+        for category in backend.LAUNCHER_CATEGORIES:
+            for group in category.get('groups', []):
+                names = [name for name, _ in backend.SETTINGS_SECTIONS[group['category']]]
+                self.assertIn(group['section'], names, group)
+                section_keys = dict(backend.SETTINGS_SECTIONS[group['category']])[group['section']]
+                keys = group.get('keys', section_keys)
+                self.assertEqual(len(keys), len(set(keys)), group)
+                self.assertTrue(set(keys).issubset(set(section_keys)), group)
+                for key in keys:
+                    self.assertNotIn(key, claimed, f'{key} is on two categories')
+                    claimed[key] = (group['category'], group['section'])
+        fields = {field['key'] for page in backend.FIELDS.values() for field in page}
+        self.assertEqual(fields - set(claimed), set())
+
     def test_page_sections_carry_titles_and_hints(self):
         groups = backend.launcher_page_sections('Graphics')
         self.assertEqual(groups[0]['category'], 'Visuals')

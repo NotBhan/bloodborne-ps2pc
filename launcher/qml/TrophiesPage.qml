@@ -5,12 +5,45 @@ import QtQuick.Controls
 // trophy cache and unlock history are the only sources, so unavailable data stays unavailable.
 Item {
     id: page
+    signal openSettings(string category, string section)
     property var summary: launcher.trophySummary
     property var entries: launcher.trophyEntries
-    property var earned: entries.filter(function (entry) { return entry.earned })
-    property var locked: entries.filter(function (entry) { return !entry.earned })
+    property string filterMode: "all"
+    property string sortMode: "default"
+    property var filtered: {
+        let list = entries.slice()
+        if (filterMode === "earned") list = list.filter(function (entry) { return entry.earned })
+        else if (filterMode === "locked") list = list.filter(function (entry) { return !entry.earned })
+        const order = { "P": 0, "G": 1, "S": 2, "B": 3, "?": 4 }
+        if (sortMode === "grade")
+            list.sort(function (a, b) { return (order[a.grade] - order[b.grade]) || (a.id - b.id) })
+        else if (sortMode === "recent")
+            list.sort(function (a, b) {
+                return (a.earned === b.earned ? 0 : a.earned ? -1 : 1) ||
+                       (b.unlocked > a.unlocked ? 1 : b.unlocked < a.unlocked ? -1 : 0) ||
+                       (a.id - b.id)
+            })
+        return list
+    }
+    property var earned: filtered.filter(function (entry) { return entry.earned })
+    property var locked: filtered.filter(function (entry) { return !entry.earned })
 
     Rectangle { anchors.fill: parent; color: Theme.base }
+    Image {
+        anchors.fill: parent
+        source: Qt.resolvedUrl("../art/strip.png")
+        fillMode: Image.PreserveAspectCrop
+        smooth: true; mipmap: true
+        opacity: 0.9
+    }
+    Rectangle {
+        anchors.fill: parent
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#990b0c10" }
+            GradientStop { position: 0.55; color: "#cc0b0c10" }
+            GradientStop { position: 1.0; color: "#f20b0c10" }
+        }
+    }
 
     Flickable {
         anchors.fill: parent
@@ -156,28 +189,67 @@ Item {
                 width: parent.width
                 spacing: 0
 
+                Item {
+                    width: parent.width; height: 34
+                    Text {
+                        anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                        text: "All trophies: " + page.summary.total; color: Theme.textDim
+                        font.family: Theme.sans; font.pixelSize: 11
+                    }
+                    Row {
+                        anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        spacing: 8
+                        GlassComboBox {
+                            width: 108; height: 28
+                            model: [{value: "all", text: "All"}, {value: "earned", text: "Earned"},
+                                    {value: "locked", text: "Locked"}]
+                            textRole: "text"; valueRole: "value"
+                            Component.onCompleted: currentIndex = indexOfValue(page.filterMode)
+                            onActivated: page.filterMode = currentValue
+                        }
+                        GlassComboBox {
+                            width: 164; height: 28
+                            model: [{value: "default", text: "Game default"},
+                                    {value: "grade", text: "Grade"},
+                                    {value: "recent", text: "Recently earned"}]
+                            textRole: "text"; valueRole: "value"
+                            Component.onCompleted: currentIndex = indexOfValue(page.sortMode)
+                            onActivated: page.sortMode = currentValue
+                        }
+                    }
+                }
+                Item { width: 1; height: 2 }
+                Rectangle { width: parent.width; height: 1; color: Theme.line }
+
                 Text {
+                    visible: page.earned.length > 0
                     text: "UNLOCKED (" + page.earned.length + ")"
                     color: Theme.textFaint; font.family: Theme.sans
                     font.pixelSize: 10; font.letterSpacing: 1.3
+                    topPadding: 14
                 }
-                Item { width: 1; height: 4 }
-                Rectangle { width: parent.width; height: 1; color: Theme.line }
+                Item { visible: page.earned.length > 0; width: 1; height: 4 }
                 Repeater {
                     model: page.earned
                     delegate: trophyRow
                 }
-                Item { width: 1; height: 18 }
+                Item { visible: page.locked.length > 0; width: 1; height: 18 }
                 Text {
+                    visible: page.locked.length > 0
                     text: "LOCKED (" + page.locked.length + ")"
                     color: Theme.textFaint; font.family: Theme.sans
                     font.pixelSize: 10; font.letterSpacing: 1.3
                 }
-                Item { width: 1; height: 4 }
-                Rectangle { width: parent.width; height: 1; color: Theme.line }
+                Item { visible: page.locked.length > 0; width: 1; height: 4 }
                 Repeater {
                     model: page.locked
                     delegate: trophyRow
+                }
+                Text {
+                    visible: page.filtered.length === 0
+                    text: "No trophies match this filter."; color: Theme.textDim
+                    font.family: Theme.sans; font.pixelSize: 11
+                    topPadding: 14
                 }
             }
         }

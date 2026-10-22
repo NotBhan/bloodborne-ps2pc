@@ -290,6 +290,61 @@ SECTION_HINTS = {
     ('System', 'Developer'): 'Debug views and validation. Leave off for normal play.',
     ('System', 'Maintenance'): 'Open the port folders or clear the shader cache.',
 }
+# The PS5 shell's Settings categories. One source of truth for the QML menu and the tests:
+# every existing section lives here exactly once, and a section split across categories
+# (Display/Performance, Graphics/Upscaling) splits its field keys without repeating one.
+LAUNCHER_CATEGORIES = [
+    {'key': 'display', 'label': 'Display', 'icon': 'display', 'groups': [
+        {'category': 'Visuals', 'section': 'Display & frame rate',
+         'keys': ['output_res', 'hud_position', 'fullscreen', 'hdr'], 'actions': False},
+    ]},
+    {'key': 'graphics', 'label': 'Graphics', 'icon': 'graphics', 'groups': [
+        {'category': 'Visuals', 'section': 'Upscaling', 'title': 'Sharpening',
+         'keys': ['sharpen', 'sharpness'], 'actions': False, 'hint': ''},
+        {'category': 'Visuals', 'section': 'Frame generation'},
+        {'category': 'Visuals', 'section': 'Image effects'},
+        {'category': 'Visuals', 'section': 'Video memory'},
+        {'category': 'Visuals', 'section': 'Overlay'},
+    ]},
+    {'key': 'upscaling', 'label': 'Upscaling', 'icon': 'visuals', 'groups': [
+        {'category': 'Visuals', 'section': 'Upscaling', 'title': 'Upscaling',
+         'keys': ['upscaler', 'preset', 'live_resolution', 'object_motion']},
+    ]},
+    {'key': 'performance', 'label': 'Performance', 'icon': 'update', 'groups': [
+        {'category': 'Visuals', 'section': 'Display & frame rate', 'title': 'Frame pacing',
+         'keys': ['fps_mode', 'frame_cap', 'frames_ahead', 'present_mode'], 'actions': False},
+        {'category': 'System', 'section': 'Engine'},
+    ]},
+    {'key': 'compatibility', 'label': 'Compatibility', 'icon': 'system', 'groups': [
+        {'category': 'System', 'section': 'Developer'},
+    ]},
+    {'key': 'controller', 'label': 'Controller', 'icon': 'controller', 'groups': [
+        {'category': 'Controls', 'section': 'Button prompts'},
+        {'category': 'Controls', 'section': 'Mouse'},
+        {'category': 'Controls', 'section': 'Keyboard'},
+    ]},
+    {'key': 'gameData', 'label': 'Game & Data', 'icon': 'folder', 'groups': [
+        {'category': 'Game & Saves', 'section': 'Game files'},
+        {'category': 'Game & Saves', 'section': 'Your data'},
+        {'category': 'Game & Saves', 'section': 'In-game preferences'},
+        {'category': 'Mods & Patches', 'section': 'Installed mods'},
+        {'category': 'Mods & Patches', 'section': 'Built-in enhancements'},
+        {'category': 'Mods & Patches', 'section': "Hunter's Atlas (map)"},
+        {'category': 'Mods & Patches', 'section': 'External patches'},
+        {'category': 'Mods & Patches', 'section': 'Gameplay patches'},
+        {'category': 'Online', 'section': "The Hunter's Dream"},
+        {'category': 'Co-op', 'section': 'Seamless co-op'},
+        {'category': 'Co-op', 'section': 'Host a session'},
+        {'category': 'Co-op', 'section': 'Join a host'},
+    ]},
+    {'key': 'launcher', 'label': 'Launcher', 'icon': 'settings', 'groups': [
+        {'category': 'System', 'section': 'Launch'},
+        {'category': 'System', 'section': 'Updates'},
+        {'category': 'System', 'section': 'Maintenance'},
+    ]},
+    {'key': 'diagnostics', 'label': 'Diagnostics', 'icon': 'log', 'diagnostics': True},
+]
+
 SEARCH_TERMS = {
     'output_res': 'screen resolution display', 'fps_mode': 'fps frame rate',
     'frame_cap': 'fps limit unlocked', 'upscaler': 'dlss fsr taa',
@@ -748,6 +803,14 @@ class LauncherBackend(QObject):
     @Slot(str, result='QVariantList')
     def categorySections(self, category):
         return [name for name, _ in SETTINGS_SECTIONS.get(category, [])]
+
+    @Property('QVariantList', constant=True)
+    def settingsCategories(self):
+        return LAUNCHER_CATEGORIES
+
+    @Slot(str, str, result=str)
+    def sectionHint(self, category, section):
+        return SECTION_HINTS.get((category, section), '')
 
     @Slot(str, str, result='QVariantList')
     def sectionFields(self, category, section):

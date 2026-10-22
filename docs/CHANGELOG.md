@@ -7,11 +7,17 @@ Planned work is in [ROADMAP.md](ROADMAP.md).
 
 ## Unreleased
 
-- **Trophies page:** a new top-level page shows local progress, grade counts and separate
-  **Unlocked** and **Locked** sections, using the same read-only trophy cache/history as the
-  game. No placeholder names, fake rarity or invented completion.
-- **Activity and play time:** Overview now shows total play time and only real game activity
-  (sessions and trophy unlocks). Launcher/settings events stay out of the feed.
+- **Linux parity shell:** the Windows launcher now uses the same three destinations as Linux —
+  **Game Details**, **Trophies** and **Settings** — over full-bleed key art. Settings is a
+  full-width category list (Display, Graphics, Upscaling, Performance, Compatibility,
+  Controller, Game & Data, Launcher, Diagnostics) that opens one category at a time, with the
+  upscaling preset in the Upscaling category. Every existing field and action keeps its home;
+  the category map lives in the backend and is covered by tests.
+- **Trophies page:** a new top-level page shows local progress, grade counts, filter and sort,
+  and separate **Unlocked** and **Locked** sections, using the same read-only trophy
+  cache/history as the game. No placeholder names, fake rarity or invented completion.
+- **Activity and play time:** Game Details now shows total play time and only real game
+  activity (sessions and trophy unlocks). Launcher/settings events stay out of the feed.
 - **Discord Rich Presence:** presence is the game name and hunter level, with a
   **Platinum Trophy Earned** state when the platinum trophy is unlocked. Echoes, Insight,
   area/boss text and the attribute tooltip are no longer published.

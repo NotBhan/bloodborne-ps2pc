@@ -5,9 +5,11 @@ The Windows launcher is a PySide6/Qt Quick desktop application in `windows_laucn
 stops the game process, and exposes diagnostics. The classic Tk fallback remains available
 when Qt Quick cannot start.
 
-The launcher UI was reworked around a single persistent navigation rail. The Windows
-backend, settings keys, executable, packaging toolchain, and Windows process model remain
-compatible with the existing Windows build.
+The launcher UI is the same shell as the Linux launcher: three destinations — **Game
+Details**, **Trophies** and **Settings** — over full-bleed key art, with Settings as a
+full-width category list that opens one category at a time. The Windows backend, settings
+keys, executable, packaging toolchain, and Windows process model remain compatible with the
+existing Windows build.
 
 ## Release 1.10.7
 
@@ -27,7 +29,7 @@ mods and patches, the Hunter's Dream account flow, diagnostics, and restart supe
 Windows launcher remains maintained here; neither launcher replaces the other, and both share
 the renderer, `bbport.ini` settings keys, and preparation scripts.
 
-![Overview](images/launcher-overview.jpg)
+![Game Details](images/launcher-overview.jpg)
 
 ## Status labels used in this document
 
@@ -42,39 +44,51 @@ the renderer, `bbport.ini` settings keys, and preparation scripts.
 - **Gameplay-verified** — a playable session was exercised.
 - **Blocked / Failed / Not verified** — no claim is made.
 
-## Pages
+## Destinations
 
-| Page | Contents |
+| Destination | Contents |
 |---|---|
-| **Overview** | Launch state, offline/online/co-op mode, primary Play/Stop action, readiness checks, current graphics summary, total play time, recent game/trophy activity, quick links, update notice. |
-| **Trophies** | Local progress, earned/total and grade counts, unlocked and locked sections, unlock dates and descriptions. Unavailable data is reported truthfully. |
-| **Graphics** | Graphics presets, upscaler and preset, live resolution, sharpening, object-motion vectors, frame generation, image effects, video-memory behavior, overlay. FSR 4 asset download and status. |
-| **Display** | Output resolution, HUD position, fullscreen, HDR, frame-rate mode, unlocked-mode limit, frames ahead, presentation mode. |
-| **Game & saves** | Game folder, DLC folder, saves folder, trophy keys, language, hunter name, skip-intro, button prompts, mouse, keyboard. Install-from-archive and readiness actions. |
-| **Mods & patches** | Installed mods and load order, built-in enhancements, Hunter's Atlas, external patches, gameplay patches. |
-| **Online** | The Hunter's Dream sign-in and connection test, plus seamless co-op setup, hosting and invite flow. |
-| **System** | Launcher language, direct-start behavior, desktop/Steam shortcuts, updates from this fork's releases, draw pipeline/readbacks/extra environment, developer diagnostics, maintenance. |
-| **Diagnostics** | Process state, last exit code, log line/error/warning counts, runtime report, paths, copy/save/clear log, shader-cache clear, live log with severity colouring and follow mode. |
+| **Game Details** | Full-bleed key art, cover mark, launch state, offline/online/co-op mode, primary Play/Stop action, readiness checks, current graphics summary, total play time, trophy progress and recent game/trophy activity. |
+| **Trophies** | Local progress, earned/total and grade counts, filter and sort, unlocked and locked sections, unlock dates and descriptions. Unavailable data is reported truthfully. |
+| **Settings** | One full-width category list; each category opens on its own with a back breadcrumb. |
 | **Setup** | Four-step first-run wizard: welcome, game files, saves/trophies, graphics/finish. |
+| **Diagnostics** | A Settings category: process state, last exit code, log line/error/warning counts, runtime report, paths, copy/save/clear log, shader-cache clear, live log with severity colouring and follow mode. |
+
+Settings categories:
+
+| Category | Contents |
+|---|---|
+| **Display** | Output resolution, HUD position, fullscreen, HDR. |
+| **Graphics** | Sharpening, frame generation, image effects, video memory, overlay. |
+| **Upscaling** | Upscaler, upscaling preset, live resolution and object-motion vectors, FSR 4 asset download and status. |
+| **Performance** | Frame-rate mode, unlocked-mode limit, frames ahead, presentation mode, engine draw pipeline/readbacks/extra environment. |
+| **Compatibility** | Developer debug views and validation. |
+| **Controller** | Button prompts, mouse, keyboard. |
+| **Game & Data** | Game folder, DLC folder, saves folder, trophy keys, language, hunter name, skip-intro, mods and load order, built-in enhancements, Hunter's Atlas, external patches, gameplay patches, The Hunter's Dream sign-in, seamless co-op hosting and joining. |
+| **Launcher** | Launcher language, direct-start behavior, desktop/Steam shortcuts, updates from this fork's releases, maintenance. |
+| **Diagnostics** | The live log and runtime report described above. |
 
 ![Trophies](images/launcher-trophies.jpg)
 
-Every existing field and action from the old category workspace has a home. The mapping is
-declared in `launcher/bbport_launcher_backend.py` (`LAUNCHER_PAGES`), and
-`tests/test_launcher_pages.py` asserts that every settings section and field is reachable
-(excluding the dedicated Diagnostics page).
+Every existing field and action from the old category workspace has a home. The shell's
+mapping is declared in `launcher/bbport_launcher_backend.py` (`LAUNCHER_CATEGORIES`) and read
+by the QML directly; `tests/test_launcher_pages.py` asserts that every settings section is
+reachable and that no field appears on two categories (excluding the dedicated Diagnostics
+category). The older `LAUNCHER_PAGES` mapping remains for the backend's routing helpers and
+their tests.
 
 ## Updates
 
-Update checks, the Overview notice, and **System → Install update** use
+Update checks, the Game Details notice, and **Settings → Launcher → Install update** use
 [this fork's releases](https://github.com/NotBhan/bloodborne-ps2pc/releases), never the
 upstream Jgamrot package. The installed release tag is tracked separately from `VERSION`, so
 the release the build was cut from is not offered as an update.
 
 ## Shader precompile
 
-**System → Engine → Precompile shaders before launch** controls the automatic pre-build
-(`BB_SHADER_PREBUILD`). **System → Maintenance → Precompile shaders** runs the same warm-up on
+**Settings → Launcher → Engine → Precompile shaders before launch** controls the automatic
+pre-build (`BB_SHADER_PREBUILD`). **Settings → Launcher → Maintenance → Precompile shaders**
+runs the same warm-up on
 demand: the game starts, builds the pipelines the shipped catalog and the player's recorded
 cache know, then exits by itself. The game window opens briefly while it runs.
 
@@ -85,7 +99,7 @@ The classic Tk launcher keeps both controls on its **Advanced** page.
 ## Discord Rich Presence
 
 When `companions/Discord Rich Presence/BloodborneRPC.exe` is present, the launcher starts it
-with the game. **System → Engine → Discord Rich Presence** (classic launcher: **Advanced**;
+with the game. **Settings → Launcher → Engine → Discord Rich Presence** (classic launcher: **Advanced**;
 default on, `BB_DISCORD_RPC=0` disables it) controls it. It shows the game name and hunter
 level, and switches to **Platinum Trophy Earned** when the platinum trophy is unlocked;
 area names, Echoes and Insight are not published. Its settings are in `config.json`
@@ -95,7 +109,7 @@ reads the game's memory and the local `trophies.txt` / `trophy_cache/metadata.js
 
 ## Trophy keys
 
-Import your own `keys.json` from **Game & saves → Your data → Import trophy keys** (classic
+Import your own `keys.json` from **Settings → Game & Data → Your data → Import trophy keys** (classic
 launcher: **Advanced → Import trophy keys…**). The game reads `<saves>/keys.json`, decrypts
 the trophy XML from your game's `trophy00.trp`, and shows names, descriptions, grades and
 Gamerscore in **Pause → System → Achievements**. Without a key, the list shows IDs and local
@@ -105,20 +119,23 @@ unlock history only. The launcher's readiness row reports whether the pack and k
 
 ## Architecture
 
-- `launcher/qml/Main.qml` — application shell, persistent navigation, top status bar,
-  search field, compact Play/Stop action, page container, and persistent footer status.
-- `launcher/qml/Rail.qml` — named navigation rail and the live launcher/game state.
-- `launcher/qml/HomePage.qml` — Overview.
-- `launcher/qml/SettingsWorkspace.qml` — renders the section groups returned by
-  `launcher.pageSections(pageKey)` in reading order, plus the search results view.
+- `launcher/qml/Main.qml` — application shell, transparent top bar with the three
+  destinations, live status chip, page container, toast notices, and startup routing.
+- `launcher/qml/DetailsPage.qml` — Game Details: full-bleed key art, game mark and title,
+  Play/Stop, launch mode, information rows, trophy progress, and the game-only activity feed.
+- `launcher/qml/TrophiesPage.qml` — trophy progress, filter/sort, and the unlocked/locked
+  sections.
+- `launcher/qml/Ps5Settings.qml` — the Settings category menu and category detail view. The
+  category and group map comes from the backend (`launcher.settingsCategories`).
 - `launcher/qml/SectionActions.qml` — the actions that belong to a section (install,
   sign-in, co-op, mods, maintenance, and so on).
-- `launcher/qml/DiagnosticsPage.qml` — live process/runtime/path/log view.
+- `launcher/qml/DiagnosticsPage.qml` — live process/runtime/path/log view, shown inside the
+  Settings → Diagnostics category.
 - `launcher/qml/SetupWizard.qml`, `Splash.qml` — first-run setup and the direct-launch
   splash.
-- `launcher/qml/Glass*.qml`, `FieldRow.qml`, `MenuRow.qml`, `ToggleRow.qml`, `Note.qml`,
-  `NavIcon.qml`, `Theme.qml` — shared controls and design tokens. The historical filenames
-  are retained to keep the change focused; the controls are flat surfaces, not glass.
+- `launcher/qml/Glass*.qml`, `FieldRow.qml`, `ToggleRow.qml`, `Note.qml`, `NavIcon.qml`,
+  `Theme.qml` — shared controls and design tokens. The historical filenames are retained to
+  keep the change focused; the controls are flat surfaces, not glass.
 
 Process ownership stays in `bbport_launcher_backend.py`. Page visibility and window state
 never decide whether an operation completes. The backend exposes:
@@ -127,15 +144,17 @@ never decide whether an operation completes. The backend exposes:
 - `lastExitCode`
 - `runtimeInfo` (`gpu`, `upscaler`, `objectMotion`, `presentMode`, `output`, `error`)
 - `logStats`, `logLines`, and `paths`
-- `pageSections(page)` / `pageFor(category, section)` (with pure helpers used by tests)
+- `settingsCategories`, `sectionFields(category, section)`, `sectionHint(category, section)`
+- `pageSections(page)` / `pageFor(category, section)` (routing helpers used by tests)
 - `action("openLogs")` and `action("exportLog")` alongside the existing copy/clear actions
 
 Settings still go through the existing validated, atomic-write path. Unknown settings keys
 are preserved, malformed files fall back safely, and the QML controls do not write directly
 to disk.
 
-Page changes are plain `visible` bindings in `Main.qml`. There are no page-transition
-animations, repaint timers, sleeps, page recreation loops, or fullscreen toggles.
+Destination and category changes are plain `visible` bindings in `Main.qml` and
+`Ps5Settings.qml`. There are no page-transition animations, repaint timers, sleeps, page
+recreation loops, or fullscreen toggles.
 
 ## Wine page-transition fix
 
@@ -200,16 +219,13 @@ python -m unittest tests.test_launcher_pages -v
 
 Observed on this machine:
 
-- 321 tests: **2 errors, 77 skipped**. The pre-rework baseline was 315 tests with the same two errors and 77 skips; the six new page-mapping tests pass.
-- Windows launcher settings tests: **21 passed**.
+- 466 tests: **OK, 77 skipped**. The page-mapping module (now eight tests, including the
+  category coverage and one-owner-per-field checks) passes.
+- Windows launcher settings tests: **23 passed**.
 - Renderer selection tests: **4 passed**.
 
-The two known baseline errors are unrelated to this work:
-
-- `test_hunters_dream...test_https_trusts_the_shipped_roots_and_explains_certificate_errors`
-  reads the certifi bundle with the host's ASCII default encoding.
-- `test_mods...test_overlay_moves_off_a_drive_without_links` resolves a simulated Windows
-  path through POSIX `realpath` on this Linux host.
+The suite has no failures on this Linux host in the current tree; earlier notes about
+`test_hunters_dream` and a mods-path test were fixed or are skipped here.
 
 ## Wine verification
 
@@ -220,21 +236,25 @@ Environment used for the packaged launcher check:
 - Xvfb `:99`, 1600x1000, **no window manager**, OpenGL Qt Quick RHI.
 - Package: `out/wine/package/bbport-windows/Bloodborne.exe --launcher`.
 
-Observed:
+Observed on the earlier page set:
 
 - The packaged window appeared at 1360x860 and rendered frames 1–2.
-- Navigation to Graphics, Display, Game & saves, Mods & patches, Online, System,
-  Diagnostics, and back to Overview produced the new page and a following present frame
-  each time (for example `QML page=Graphics` followed by `frame 3 page='Graphics'`).
-- Re-entering pages repeated normally. No QML warnings or `ReferenceError`s were logged.
-- The Setup page opened from **Game & saves → Setup wizard**.
+- Navigation between the old pages produced the new page and a following present frame each
+  time (for example `QML page=Graphics` followed by `frame 3 page='Graphics'`).
+- No QML warnings or `ReferenceError`s were logged; the Setup page opened.
 - No resize or fullscreen toggle was used.
 - `QSG_RHI_BACKEND=d3d11` remains the control experiment for the old stall.
 
-This is **launcher-runtime-verified** and **Wine-verified** for the launcher. Windowed mode
-at the default size was exercised. Maximized/fullscreen and the 1100x700 minimum layout
-were not exercised in this no-window-manager Xvfb session; the QML is anchored and declares
-a 1100x700 minimum. Native Windows and Proton were not verified in this session.
+The current three-destination shell was exercised separately on this machine through Qt's
+offscreen platform at 1180x760 and at the 900x600 minimum: Game Details, Trophies, the
+Settings category menu, Graphics, Upscaling, Diagnostics and the setup wizard all rendered
+with real fixture data, no QML warnings and no clipped controls. `qmllint` is clean for the
+shell and its pages, and `Settings → Diagnostics` still hosts the live log.
+
+This is **launcher-runtime-verified** and **Wine-verified** for the earlier shell. Windowed
+mode at the default size was exercised there; maximized/fullscreen were not. The new shell
+declares a 900x600 minimum and was exercised at that size through the offscreen platform. A
+Wine re-run of the new shell, native Windows, and Proton were not verified in this session.
 
 ### Game launch attempt
 

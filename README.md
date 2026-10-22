@@ -21,7 +21,7 @@ diagnostics, and restart supervision. The Windows launcher was not purged or rep
 remains the Windows control surface here, and both launchers share the renderer, `bbport.ini`
 settings keys, and preparation scripts.
 
-![The launcher overview](docs/images/launcher-overview.jpg)
+![Game Details](docs/images/launcher-overview.jpg)
 
 ![The Trophies page](docs/images/launcher-trophies.jpg)
 
@@ -60,10 +60,12 @@ See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 
 **Launcher and setup**
 - A setup wizard on first start that installs the game from your own ZIP or PKG dump, checks
-  the game files, saves and trophy key, and can be reopened from **Game & saves → Setup wizard**.
-- Named pages: Overview, Trophies, Graphics, Display, Game & saves, Mods & patches, Online,
-  System and Diagnostics.
-- Overview shows total play time and a game-only activity feed: sessions and real trophy
+  the game files, saves and trophy key, and can be reopened from **Settings → Game & Data**.
+- Three destinations, matching the Linux launcher: **Game Details**, **Trophies** and
+  **Settings**. Settings is one full-width category list — Display, Graphics, Upscaling,
+  Performance, Compatibility, Controller, Game & Data, Launcher and Diagnostics — with each
+  category opening on its own.
+- Game Details shows total play time and a game-only activity feed: sessions and real trophy
   unlocks, never launcher/settings noise.
 - Trophies are grouped into Unlocked and Locked sections with progress and grade counts.
 - Every setting from the old launcher is still available; startup options are marked as applying at the next launch.
@@ -71,7 +73,7 @@ See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 - `Play Bloodborne.exe` starts the game straight away with your saved settings.
 - Update notifications for this fork's full releases.
 - Discord Rich Presence (game name, hunter level, Platinum state) when the bundled companion
-  runs; toggle it under System → Engine (Advanced in the classic launcher).
+  runs; toggle it under **Settings → Launcher → Engine** (Advanced in the classic launcher).
 - Trophy names, descriptions, grades and progress from your own trophy pack, with an
   **Import trophy keys** action; the launcher separates unlocked and locked trophies, and the
   platinum is granted automatically when every base trophy is unlocked.
@@ -85,11 +87,11 @@ See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
   shaders* in the window title) instead of stuttering the first time an area or effect appears.
   The included catalog covers the game up to the Blood-starved Beast so far; it lists shaders,
   not game code, and each install builds them from its own files. Off with `BB_SHADER_PREBUILD=0`.
-  **System → Maintenance → Precompile shaders** runs the same warm-up on demand: the game
+  **Settings → Launcher → Maintenance → Precompile shaders** runs the same warm-up on demand: the game
   starts, builds the pipelines it knows (catalog plus your recorded cache), then exits. Shaders
   never recorded still compile once, the first time they are drawn.
 
-![Graphics and upscaling](docs/images/launcher-graphics.jpg)
+![Upscaling and graphics settings](docs/images/launcher-upscaling.jpg)
 
 **In the game**
 - PC settings in the game's own System menu: PC Graphics, Display, Effects, Settings and
@@ -101,13 +103,13 @@ See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 - Controller, and keyboard and mouse at the same time, with rebindable keys
   (`key_<action>=` lines in `bbport.ini`).
 - Mouse camera: click the game window and the mouse turns the camera 1:1. Sensitivity and
-  invert Y are in **Game & saves → Mouse**.
+  invert Y are in **Settings → Controller → Mouse**.
 - Keyboard movement smoothing: changing direction with WASD swings smoothly instead of
-  stopping for a moment (**Game & saves → Keyboard**, *Off* to disable).
+  stopping for a moment (**Settings → Controller → Keyboard**, *Off* to disable).
 - Button prompts: PlayStation, Xbox (included) or keyboard keys (see below), switchable in the
   launcher and the guide.
 
-**Optional enhancements** (off by default; switch them on in the launcher's **Mods & patches** page or
+**Optional enhancements** (off by default; switch them on under **Settings → Game & Data** or
 the guide. They are made from your own game files at start, which stay unchanged.)
 - **Lamps: Level Up and Storage** (`pc_enhanced_lamps`): every lit lamp also offers the game's
   own level-up and storage screens, once you have used the Doll and the storage box.
@@ -165,7 +167,8 @@ the 1.09 update did not apply.
 
 **DLC.** The Game of the Year edition (CUSA03173) already includes The Old Hunters. With a
 base-game dump, dump your add-ons too: each is a folder named like `SPEXPANSIONDLC03` with only
-`sce_sys` inside. Put them in one folder and choose it as **DLC folder** on the **Game & saves** page.
+`sce_sys` inside. Put them in one folder and choose it as **DLC folder** in
+**Settings → Game & Data → Game files**.
 
 **Achievements.** Names, descriptions and Gamerscore need the trophy key from your own PS4 in
 `user\keys.json` (shadPS4's format, `{"TrophyKeySet":{"ReleaseTrophyKey":"..."}}`). Without it,
@@ -173,7 +176,7 @@ achievements show their numbers and icons. Nothing syncs to PlayStation Network.
 
 ## Keyboard button prompts
 
-Choose **Keyboard** in the launcher (**Game & saves → Button prompts**). The key images are
+Choose **Keyboard** in the launcher (**Settings → Controller → Button prompts**). The key images are
 [PCBButtons](https://www.nexusmods.com/bloodborne/mods/460) by **JinkiJinn**, included with the
 port as its permissions allow; nothing needs downloading. Choosing it also sets your
 keys to the ones the images show: E interact, Left Shift dodge, R blood vial, Q item,
@@ -197,14 +200,15 @@ Keep your extracted game folder where it is; there is no need to extract it agai
    trophies, `keys.json`), its `bbport.ini` and its `mods` folder.
 2. Extract this package to a **new** folder and run its `Bloodborne.exe`. Do not copy only
    `Bloodborne.exe` into an older port.
-3. On **Game & saves**, set **Game folder** to your existing folder with `eboot.bin`, and **Saves folder**
-   to your existing `user` folder (or copy your saves into the new one while everything is
-   closed). Keep the backup until your character loads.
-4. Copy over the mods you still want and enable them under **Mods & patches**.
+3. On **Settings → Game & Data → Game files**, set **Game folder** to your existing folder with
+   `eboot.bin`, and **Saves folder** to your existing `user` folder (or copy your saves into the
+   new one while everything is closed). Keep the backup until your character loads.
+4. Copy over the mods you still want and enable them under
+   **Settings → Game & Data → Installed mods**.
 
 ## Launcher diagnostics
 
-Open **Diagnostics** in the launcher for the current process state, last exit code, runtime
+Open **Settings → Diagnostics** for the current process state, last exit code, runtime
 GPU/upscaler/presentation report, and the live session log. **Copy log**, **Save log…** and
 **Clear log** are available together with the port/log/config folders. The log viewer colours
 lines containing errors or warnings and can follow new output. For deeper launcher
@@ -214,8 +218,8 @@ messages to `%APPDATA%\bbport-launcher\launcher-debug.log` and is off by default
 ## Settings for advanced users
 
 Game settings are stored in `bbport.ini` and launcher settings in
-`%APPDATA%\bbport-launcher\settings.json`. Environment overrides on the launcher's **System**
-page take precedence:
+`%APPDATA%\bbport-launcher\settings.json`. Environment overrides under
+**Settings → Launcher → Engine** take precedence:
 
 | Setting | `bbport.ini` | Override |
 |---|---|---|
@@ -247,8 +251,9 @@ page take precedence:
 - Areas and effects beyond the shader catalog (so far, after the Blood-starved Beast) still
   stutter briefly the first time while their shaders compile; later releases extend the catalog.
   On AMD and Intel GPUs most fragment shaders still compile in play. On a black screen, try
-  **System → Maintenance → Clear shader cache**.
-- Occasional "exploded" character faces: set **GPU readbacks** to **Precise** (System → Engine);
+  **Settings → Launcher → Maintenance → Clear shader cache**.
+- Occasional "exploded" character faces: set **GPU readbacks** to **Precise**
+  (**Settings → Launcher → Engine**);
   it costs some speed.
 
 ## Requirements
