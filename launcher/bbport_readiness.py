@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 import re
-import shutil
 import tempfile
 
 
@@ -12,9 +11,11 @@ def valid_trophy_key(value):
 
 
 def import_trophy_key(source, user_dir):
-    """Copies a valid keys.json into the saves folder the game reads. Returns its path.
-    ValueError: not a trophy keys file. OSError: the copy failed."""
-    data = json.loads(Path(source).read_text(encoding='utf-8-sig'))
+    """Writes a valid keys.json into the saves folder the game reads, without a UTF-8 BOM
+    (the game's JSON parser rejects one). Returns its path.
+    ValueError: not a trophy keys file. OSError: reading or writing failed."""
+    text = Path(source).read_text(encoding='utf-8-sig')
+    data = json.loads(text)
     try:
         key = data['TrophyKeySet']['ReleaseTrophyKey']
     except (KeyError, TypeError):
@@ -23,8 +24,15 @@ def import_trophy_key(source, user_dir):
         raise ValueError('ReleaseTrophyKey must be 32 hexadecimal characters')
     destination = Path(user_dir) / 'keys.json'
     destination.parent.mkdir(parents=True, exist_ok=True)
-    if Path(source).resolve() != destination.resolve():
-        shutil.copy2(source, destination)
+    temporary = destination.with_name(destination.name + '.tmp')
+    try:
+        temporary.write_text(text, encoding='utf-8')
+        temporary.replace(destination)
+    finally:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
     return destination
 
 

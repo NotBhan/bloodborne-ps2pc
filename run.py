@@ -180,7 +180,7 @@ def companion_folders(data, env):
     folders = {}
     try:
         enabled = set(json.loads((data / 'companions.json').read_text(encoding='utf-8')).get('enabled', []))
-    except (OSError, ValueError):
+    except (OSError, ValueError, AttributeError, TypeError):
         enabled = set()
     companions = data / 'companions'
     for folder in sorted(companions.iterdir() if companions.is_dir() else ()):
@@ -190,8 +190,10 @@ def companion_folders(data, env):
         for parent in (companions, PORT / 'out' / 'companions', PORT / 'companions'):
             folder = parent / 'Discord Rich Presence'
             if (folder / 'BloodborneRPC.exe').is_file():
-                folders.setdefault(folder.name, folder)
+                folders[folder.name] = folder  # prefer a copy that actually has the exe
                 break
+    else:
+        folders.pop('Discord Rich Presence', None)  # the launcher toggle wins
     return list(folders.values())
 
 
@@ -209,7 +211,7 @@ def start_companions(data, env, game_pid):
             print(f'Companion: {spec.get("name", folder.name)}')
             started.append(subprocess.Popen([str(exe)], cwd=folder, env={**env, 'BB_GAME_PID': str(game_pid)},
                                             stdin=subprocess.DEVNULL, creationflags=no_console()))
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, AttributeError, TypeError) as error:
             print(f'Companion {folder.name} not started: {error}', file=sys.stderr)
     return started
 

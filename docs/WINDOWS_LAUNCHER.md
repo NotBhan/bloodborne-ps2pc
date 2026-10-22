@@ -82,9 +82,10 @@ The classic Tk launcher keeps both controls on its **Advanced** page.
 ## Discord Rich Presence
 
 When `companions/Discord Rich Presence/BloodborneRPC.exe` is present, the launcher starts it
-with the game. **System → Engine → Discord Rich Presence** (default on; `BB_DISCORD_RPC=0`
-disables it) controls it. It shows the area, boss fight, level, Blood Echoes and Insight; its
-settings are in `config.json` next to the executable and its log is
+with the game. **System → Engine → Discord Rich Presence** (classic launcher: **Advanced**;
+default on, `BB_DISCORD_RPC=0` disables it) controls it. It shows the area, level, Blood Echoes
+and Insight; its settings are
+in `config.json` next to the executable and its log is
 `%LOCALAPPDATA%\bbport-launcher\rpc.log`. The companion only reads the game's memory.
 
 ## Trophy keys

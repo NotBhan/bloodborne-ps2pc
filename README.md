@@ -63,8 +63,8 @@ See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 - A live Diagnostics page shows process state, exit code, runtime facts, paths and the session log (copy, save or clear).
 - `Play Bloodborne.exe` starts the game straight away with your saved settings.
 - Update notifications for this fork's full releases.
-- Discord Rich Presence (area, boss, level, Echoes, Insight) when the bundled companion runs;
-  toggle it under System → Engine.
+- Discord Rich Presence (area, level, Echoes, Insight) when the bundled companion runs;
+  toggle it under System → Engine (Advanced in the classic launcher).
 - Trophy names, descriptions, grades and Gamerscore from your own trophy pack, with an
   **Import trophy keys** action; local unlock history and platinum auto-grant included.
 

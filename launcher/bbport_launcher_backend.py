@@ -24,7 +24,7 @@ import bbport_coop as coop
 import bbport_launcher_win as core
 import bbport_startup
 from bbport_pkg_setup import PackageSetupError, install_game
-from bbport_readiness import check_readiness, valid_trophy_key
+from bbport_readiness import check_readiness, import_trophy_key, valid_trophy_key
 
 
 def choice_rows(options):
@@ -919,9 +919,8 @@ class LauncherBackend(QObject):
                 return
 
         try:
-            user_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-        except OSError as error:
+            import_trophy_key(source, user_dir)
+        except (OSError, ValueError) as error:
             QMessageBox.warning(None, 'Import failed', str(error))
             return
 
@@ -947,9 +946,8 @@ class LauncherBackend(QObject):
         source, target = old_user / 'keys.json', new_user / 'keys.json'
         if source.is_file() and not target.exists() and source.resolve() != target.resolve():
             try:
-                new_user.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source, target)
-            except OSError as error:
+                import_trophy_key(source, new_user)
+            except (OSError, ValueError) as error:
                 self._set_notice(f'Copy keys.json to the new saves folder yourself: {error}')
                 return
             self._set_notice('Trophy keys copied to the new saves folder.')
