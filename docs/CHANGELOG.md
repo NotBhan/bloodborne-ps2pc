@@ -12,7 +12,7 @@ Planned work is in [ROADMAP.md](ROADMAP.md).
 - **Game activity and play time:** Game Details shows total play time and only game activity
   (sessions and trophy unlocks), not launcher startup, folder changes or asset downloads.
 - **Discord Rich Presence:** presence is now the game name and hunter level, with a
-  **Platinum Trophy Earned** state when every trophy in the local cache is unlocked. Blood
+  **Platinum Trophy Earned** state when the platinum trophy is unlocked. Blood
   Echoes, Insight, area/boss text and the attribute tooltip are no longer published.
 - **GUI pass:** the trophy list has clearer section headers, the upscaler preset moved to
   Upscaling beside the upscaler, the DLSS row no longer truncates, and log lines have more
