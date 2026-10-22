@@ -5,7 +5,7 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
-## Unreleased
+## 1.10.7 (2026-10-22)
 
 - **Trophies:** `sceNpTrophyGetGameInfo` reports real counts and progress,
   `sceNpTrophyGetTrophyInfo` returns names/descriptions/grade/unlock state, and the platinum is
