@@ -23,6 +23,8 @@ settings keys, and preparation scripts.
 
 ![The launcher overview](docs/images/launcher-overview.jpg)
 
+![The Trophies page](docs/images/launcher-trophies.jpg)
+
 ## Download
 
 Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.7/bbport-windows.zip)**

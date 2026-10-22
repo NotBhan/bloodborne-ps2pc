@@ -57,6 +57,8 @@ the renderer, `bbport.ini` settings keys, and preparation scripts.
 | **Diagnostics** | Process state, last exit code, log line/error/warning counts, runtime report, paths, copy/save/clear log, shader-cache clear, live log with severity colouring and follow mode. |
 | **Setup** | Four-step first-run wizard: welcome, game files, saves/trophies, graphics/finish. |
 
+![Trophies](images/launcher-trophies.jpg)
+
 Every existing field and action from the old category workspace has a home. The mapping is
 declared in `launcher/bbport_launcher_backend.py` (`LAUNCHER_PAGES`), and
 `tests/test_launcher_pages.py` asserts that every settings section and field is reachable
