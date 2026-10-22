@@ -176,6 +176,7 @@ ApplicationWindow {
                     highlighted: !launcher.running
                     text: launcher.running ? "Stop" : "Play"
                     enabled: launcher.running || (!launcher.setupRunning
+                              && !launcher.precompiling
                               && launcher.launchState !== "preparing"
                               && launcher.launchState !== "starting")
                     onClicked: launcher.running ? launcher.stop() : window.primaryAction()

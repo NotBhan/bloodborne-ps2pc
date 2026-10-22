@@ -450,7 +450,8 @@ def main():
             game_proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, creationflags=no_console())
             started = []
             try:
-                started = start_companions(data, env, game_proc.pid)
+                started = ([] if env.get('BB_PRECOMPILE_ONLY')
+                           else start_companions(data, env, game_proc.pid))
                 status = game_proc.wait()
             finally:
                 for proc in started:

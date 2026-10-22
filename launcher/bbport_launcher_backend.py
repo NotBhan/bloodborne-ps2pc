@@ -136,6 +136,7 @@ FIELDS = {
         row('ui_language', 'Launcher language', 'choice', [('', ('System default',))] + core.UI_LANGUAGES),
         row('draw_pipe', 'Draw pipeline', 'choice', core.DRAW_PIPE),
         row('readbacks', 'GPU readbacks', 'choice', core.READBACKS),
+        row('precompile_shaders', 'Precompile shaders before launch', 'toggle'),
         row('extra_env', 'Extra environment variables'),
     ],
     'Diagnostics': [
@@ -187,7 +188,7 @@ SETTINGS_SECTIONS = {
     'System': [
         ('Launch', ['ui_language']),
         ('Updates', []),
-        ('Engine', ['draw_pipe', 'readbacks', 'extra_env']),
+        ('Engine', ['draw_pipe', 'readbacks', 'precompile_shaders', 'extra_env']),
         ('Developer', ['debug_camera', 'debug_menu', 'frame_stats', 'gpu_profile', 'vk_validation']),
         ('Maintenance', []),
         ('Logs', []),
@@ -303,6 +304,7 @@ SEARCH_ACTIONS = [
     ('System', 'Launch', 'Desktop shortcut', 'start menu'),
     ('System', 'Launch', 'Add to Steam', 'integration'),
     ('System', 'Logs', 'Copy log', 'activity diagnostics'),
+    ('System', 'Maintenance', 'Precompile shaders', 'shader warmup pipeline'),
     ('System', 'Maintenance', 'Clear shader cache', 'shaders'),
 ]
 
@@ -333,6 +335,7 @@ class LauncherBackend(QObject):
     gameStarted = Signal()
     gameFinished = Signal(int, bool)  # exit code, whether the game got as far as running
     presetApplied = Signal()
+    _precompileDone = Signal(int, str)  # exit code, last lines of the warm-up run
 
     def __init__(self, route=None):
         super().__init__()
@@ -347,6 +350,7 @@ class LauncherBackend(QObject):
         self.ini, self.ini_lines = core.load_ini()
         self.process = None
         self.job = None
+        self._precompiling = False
         self._log = ''
         self._log_lines = []
         self._last_exit = None
@@ -368,6 +372,7 @@ class LauncherBackend(QObject):
         self.connectionResult.connect(self._show_connection_result)
         self.setupCompleted.connect(self._complete_game_setup)
         self.setupFailed.connect(self._fail_game_setup)
+        self._precompileDone.connect(self._precompile_finished)
         # Seamless co-op (bbport_coop): the servers this launcher hosts, and the last message.
         self._coop_host = coop.Host()
         self._coop_busy = False
@@ -416,6 +421,10 @@ class LauncherBackend(QObject):
     @Property(bool, notify=runningChanged)
     def running(self):
         return self.process is not None
+
+    @Property(bool, notify=changed)
+    def precompiling(self):
+        return self._precompiling
 
     @Property(str, notify=changed)
     def launchState(self):
@@ -1019,6 +1028,9 @@ class LauncherBackend(QObject):
     def play(self, env=None):
         if self._setup_running:
             self._set_notice('Wait for the game files to finish installing.')
+            return
+        if self._precompiling:
+            self._set_notice('Wait for the shader precompile to finish.')
             return
         if self.process:
             return
@@ -1817,6 +1829,55 @@ class LauncherBackend(QObject):
     def _show_connection_result(self, result):
         QMessageBox.information(None, 'Online connection', result)
         self._set_notice('Online connection test finished.')
+
+    @Slot()
+    def precompileShaders(self):
+        """Run the game only until its pipeline warm-up finishes (BB_PRECOMPILE_ONLY), so the
+        next launch starts with the shader cache warm."""
+        if self._precompiling:
+            return
+        if self.process:
+            self._set_notice('Close the game before precompiling shaders.')
+            return
+        if self._setup_running:
+            self._set_notice('Wait for the game files to finish installing.')
+            return
+        if not core.game_info(self.app.get('game_dir')):
+            self._set_notice('Choose the game folder containing eboot.bin first.')
+            return
+        if not self.savesWritable:
+            self._set_notice('Choose a writable saves folder first.')
+            return
+        if not self._write():
+            return
+        self._precompiling = True
+        self.changed.emit()
+        self._set_notice('Precompiling shaders… a game window opens briefly.')
+
+        def work():
+            lines = []
+
+            def line(text):
+                lines.append(text)
+                if 'Preparing shaders:' in text or 'Shader pre-build:' in text:
+                    self.workerNotice.emit(text.strip()[:200])
+            code = core.run_precompile(self.app, line)
+            if code == 0 and not any('Shader pre-build:' in text for text in lines):
+                code = 2  # the game started but the pre-build did not run
+            self._precompileDone.emit(code, '\n'.join(lines[-40:]))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(int, str)
+    def _precompile_finished(self, code, output):
+        self._precompiling = False
+        self.changed.emit()
+        if code == 0:
+            self._set_notice('Shaders precompiled. The next launch starts warm.')
+            return
+        self._set_notice(f'Shader precompile failed (exit code {code}).')
+        QMessageBox.warning(None, 'Bloodborne',
+                            f'Shader precompile failed (exit code {code}).\n\n{output[-2000:]}')
 
     @Slot(str)
     def action(self, name):

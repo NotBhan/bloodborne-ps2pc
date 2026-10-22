@@ -73,6 +73,9 @@ See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
   shaders* in the window title) instead of stuttering the first time an area or effect appears.
   The included catalog covers the game up to the Blood-starved Beast so far; it lists shaders,
   not game code, and each install builds them from its own files. Off with `BB_SHADER_PREBUILD=0`.
+  **System → Maintenance → Precompile shaders** runs the same warm-up on demand: the game
+  starts, builds the pipelines it knows (catalog plus your recorded cache), then exits. Shaders
+  never recorded still compile once, the first time they are drawn.
 
 ![Graphics and upscaling](docs/images/launcher-graphics.jpg)
 

@@ -68,6 +68,17 @@ Update checks, the Overview notice, and **System → Install update** use
 upstream Jgamrot package. The installed release tag is tracked separately from `VERSION`, so
 the release the build was cut from is not offered as an update.
 
+## Shader precompile
+
+**System → Engine → Precompile shaders before launch** controls the automatic pre-build
+(`BB_SHADER_PREBUILD`). **System → Maintenance → Precompile shaders** runs the same warm-up on
+demand: the game starts, builds the pipelines the shipped catalog and the player's recorded
+cache know, then exits by itself. The game window opens briefly while it runs.
+
+Shaders never recorded yet (a new enemy, effect or area) still compile once, the first time
+they are drawn; run the action again after a play session to warm what that session recorded.
+The classic Tk launcher keeps both controls on its **Advanced** page.
+
 ![Graphics](images/launcher-graphics.jpg)
 
 ## Architecture

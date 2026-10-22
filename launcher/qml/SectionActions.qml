@@ -282,6 +282,12 @@ Column {
         width: parent.width; spacing: 8
         GlassButton { text: "Open port folder"; height: 30; onClicked: launcher.action("openPort") }
         GlassButton { text: "Open bbport.ini"; height: 30; onClicked: launcher.action("openConfig") }
+        GlassButton {
+            text: launcher.precompiling ? "Precompiling…" : "Precompile shaders"
+            height: 30
+            enabled: !launcher.running && !launcher.precompiling
+            onClicked: launcher.precompileShaders()
+        }
         GlassButton { text: "Clear shader cache"; height: 30; onClicked: launcher.action("clearCache") }
         GlassButton { text: "Setup wizard"; height: 30; onClicked: actions.openSetup(0) }
     }

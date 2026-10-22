@@ -39,6 +39,10 @@ Starting
 - Updates: when a new version is out, the launcher shows a notice; System ->
   "Install update" downloads and installs it. Saves, settings and mods are kept.
   System -> "Check for updates" checks this fork's GitHub releases by hand.
+- Shader precompile: System -> "Precompile shaders" (Advanced in the classic launcher)
+  runs the pipeline warm-up before play.
+  The game window opens briefly and closes by itself; the next launch starts warm.
+  Brand-new shaders still compile once, the first time they appear.
 - The Qt Quick launcher currently displays English labels. The classic launcher retains its
   English, Russian, Arabic, Spanish, Portuguese, French, German, Italian, Polish, Turkish,
   Chinese, Japanese and Korean translations. Run Bloodborne.exe --classic-launcher to use it.

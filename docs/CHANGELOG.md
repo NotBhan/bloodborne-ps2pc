@@ -7,6 +7,10 @@ Planned work is in [ROADMAP.md](ROADMAP.md).
 
 ## Unreleased
 
+- **Shader precompile:** a switch controls the automatic shader pre-build, and
+  **System → Maintenance → Precompile shaders** runs the pipeline warm-up in a short game run
+  (`BB_PRECOMPILE_ONLY`) that exits by itself. Recorded shaders no longer wait for the first
+  fight or area to compile; brand-new shaders still compile once when first drawn.
 - **Fork update channel:** update checks and in-app installs now use
   [this fork's releases](https://github.com/NotBhan/bloodborne_pc_notbhan/releases) instead of
   upstream Jgamrot releases, so an update cannot replace this build with a different package.

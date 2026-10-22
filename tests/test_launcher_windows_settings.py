@@ -214,6 +214,23 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(env['BB_PRESENT_MODE'], 'FifoRelaxed')
         self.assertEqual(env['BB_CUSTOM'], '1')
 
+    def test_precompile_shaders_switch_and_warmup_environment(self):
+        settings = launcher.validated_settings({'game_dir': 'C:/Games/CUSA03173',
+                                                'precompile_shaders': False})
+        self.assertEqual(launcher.game_environment(settings)['BB_SHADER_PREBUILD'], '0')
+        warm = launcher.precompile_environment({**settings, 'precompile_shaders': True})
+        self.assertEqual(warm['BB_PRECOMPILE_ONLY'], '1')
+        self.assertEqual(warm['BB_SHADER_PREBUILD'], '1')
+
+    def test_warmup_environment_drops_online_settings(self):
+        settings = launcher.validated_settings({'game_dir': 'C:/Games/CUSA03173',
+                                                'online': True, 'play_mode': 'huntersdream',
+                                                'thd_token': 'secret'})
+        warm = launcher.precompile_environment(settings)
+        for key in ('BB_ONLINE', 'BB_NET_BACKEND', 'BB_THD_TOKEN', 'BB_SHADNET_NPID'):
+            with self.subTest(key=key):
+                self.assertNotIn(key, warm)
+
 
 class AssetTests(unittest.TestCase):
     def test_spirv_header_and_sizes_are_validated(self):

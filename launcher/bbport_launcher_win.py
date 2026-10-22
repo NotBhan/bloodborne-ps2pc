@@ -287,6 +287,7 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
                 'fps_mode': 'uncap', 'frame_cap': '', 'draw_pipe': '', 'readbacks': '',
                 'frames_ahead': '', 'vram_budget_mb': '', 'frame_stats': False, 'gpu_profile': False,
                 'vk_validation': False, 'extra_env': '', 'close_on_play': False,
+                'precompile_shaders': True,
                 'check_updates': True, 'online': False, 'online_server': 'srv.shadps4.net:31313',
                 'online_webapi': '', 'online_npid': '', 'online_password': '', 'online_upnp': True,
                 'coop_name': '', 'coop_password': '', 'coop_invite': '',
@@ -865,6 +866,7 @@ def game_environment(s):
                       ('vk_validation', 'BB_VK_VALIDATION')):
         if s[key]:
             env[name] = '1'
+    env['BB_SHADER_PREBUILD'] = '1' if s.get('precompile_shaders', True) else '0'
     for item in str(s['extra_env']).split():
         if '=' in item:
             key, value = item.split('=', 1)
@@ -891,6 +893,41 @@ def game_environment(s):
     env['PYTHONUNBUFFERED'] = '1'
     env['PYTHONIOENCODING'] = 'utf-8'
     return env
+
+
+PRECOMPILE_ENV_PREFIXES = ('BB_ONLINE', 'BB_SHADNET', 'BB_THD_', 'BB_COOP', 'BB_UPNP',
+                           'BB_COMMUNITY_', 'BB_NET_BACKEND', 'BB_HUNTERS_DREAM')
+
+
+def precompile_environment(s):
+    """Environment for the launcher's warm-up run: shader pre-build on, no online/co-op side
+    effects. BB_PRECOMPILE_ONLY makes the renderer exit once its pipeline warm-up finishes."""
+    env = game_environment(s)
+    for key in list(env):
+        if key.startswith(PRECOMPILE_ENV_PREFIXES):
+            env.pop(key, None)
+    env['BB_PRECOMPILE_ONLY'] = '1'
+    env['BB_SHADER_PREBUILD'] = '1'
+    return env
+
+
+def run_precompile(s, on_line=None):
+    """Runs the game only until the renderer's pipeline warm-up finishes, then returns its exit
+    code. The game window appears briefly while the warm-up builds its pipelines."""
+    process = subprocess.Popen(run_command(), cwd=PORT_DIR, env=precompile_environment(s),
+                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True, encoding='utf-8',
+                               errors='replace', creationflags=NO_WINDOW)
+    try:
+        for line in process.stdout:
+            if on_line:
+                on_line(line.rstrip('\r\n'))
+        return process.wait()
+    finally:
+        try:
+            process.stdout.close()
+        except (OSError, ValueError):
+            pass
 
 
 # ---------------------------------------------------------------------------------------------
@@ -920,6 +957,7 @@ class Launcher:
         self.vars = {}
         self.process = self.job = None
         self.downloading = False
+        self.precompiling = False
         self.output = queue.Queue()
         self.gpu_text = _('• Checking the graphics card…', '• Проверка видеокарты…')
         self.banner_source = self.banner_image = None
@@ -1973,6 +2011,9 @@ class Launcher:
         self.check(f, 'close_on_play', 'app', _('Close the launcher when the game starts', 'Закрывать лаунчер при запуске игры'))
         self.check(f, 'check_updates', 'app', _('Check for updates when the launcher opens',
                                                 'Проверять обновления при открытии лаунчера'))
+        self.check(f, 'precompile_shaders', 'app',
+                   _('Precompile shaders before launch (less warm-up stutter)',
+                     'Предварительно компилировать шейдеры перед запуском (меньше подтормаживаний)'))
         holder = ttk.Frame(f)
         holder.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(10, 0))
         ttk.Button(holder, text=_('Desktop shortcut', 'Ярлык на рабочем столе'), command=self.shortcut).pack(side='left')
@@ -1987,6 +2028,8 @@ class Launcher:
         ttk.Label(holder, text=f'v{VERSION}', style='Muted.TLabel').pack(side='left', padx=10)
         holder = ttk.Frame(f)
         holder.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(10, 0))
+        ttk.Button(holder, text=_('Precompile shaders now', 'Скомпилировать шейдеры сейчас'),
+                   command=self.precompile_shaders).pack(side='left', padx=(0, 6))
         ttk.Button(holder, text=_('Clear shader cache', 'Очистить кэш шейдеров'), command=self.clear_cache).pack(side='left')
         ttk.Label(holder, text=_('If the game only shows a black screen, this usually helps.',
                                  'Если игра показывает только чёрный экран, обычно это помогает.'),
@@ -2300,6 +2343,11 @@ class Launcher:
     def play(self):
         if self.process:
             return
+        if self.precompiling:
+            self.messagebox.showinfo('Bloodborne', _(
+                'Wait for the shader precompile to finish.',
+                'Дождитесь окончания компиляции шейдеров.'))
+            return
         online, npid = self.var('online', 'app'), self.var('online_npid', 'app')
         if not online.get() and npid.get().strip():
             choice = self.messagebox.askyesnocancel(
@@ -2535,6 +2583,51 @@ class Launcher:
                     self.messagebox.showerror('Bloodborne', _('Update failed: {}', 'Не удалось обновить: {}').format(error))
                 self.ui_calls.put(failed)
         threading.Thread(target=work, daemon=True).start()
+
+    def precompile_shaders(self):
+        """Warm the pipeline cache: the game runs its shader pre-build, then exits
+        (BB_PRECOMPILE_ONLY), so the next launch starts with the cache warm."""
+        if self.process:
+            self.messagebox.showinfo('Bloodborne', _(
+                'Close the game before precompiling shaders.',
+                'Закройте игру перед компиляцией шейдеров.'))
+            return
+        if self.precompiling:
+            return
+        self.store()
+        self.precompiling = True
+        self.status.configure(text=_('Precompiling shaders… a game window opens briefly.',
+                                     'Компиляция шейдеров… ненадолго откроется окно игры.'), fg=GOLD)
+        lines = []
+
+        def work():
+            def line(text):
+                lines.append(text)
+                if 'Preparing shaders:' in text or 'Shader pre-build:' in text:
+                    self.ui_calls.put(lambda text=text: self.status.configure(
+                        text=text.strip()[:160], fg=MUTED))
+            code = run_precompile(self.app, line)
+            if code == 0 and not any('Shader pre-build:' in text for text in lines):
+                code = 2  # the game started but the pre-build did not run
+            self.ui_calls.put(lambda: self.precompile_finished(code, lines))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def precompile_finished(self, code, lines):
+        self.precompiling = False
+        if code == 0:
+            self.status.configure(text=_('Shaders precompiled. The next launch starts warm.',
+                                         'Шейдеры скомпилированы. Следующий запуск будет быстрым.'), fg=SUCCESS)
+            self.messagebox.showinfo('Bloodborne', _(
+                'Shader warm-up finished. The next launch starts with the pipeline cache warm.',
+                'Предварительная сборка шейдеров завершена. Следующий запуск начнётся с готовым кэшем.'))
+            return
+        self.status.configure(text=_('Shader precompile failed (exit code {}).',
+                                     'Не удалось скомпилировать шейдеры (код {}).').format(code), fg=BLOOD)
+        detail = '\n'.join(lines[-12:])
+        self.messagebox.showwarning('Bloodborne', _(
+            'Shader precompile failed (exit code {}).',
+            'Не удалось скомпилировать шейдеры (код {}).').format(code) + (f'\n\n{detail}' if detail else ''))
 
     def clear_cache(self):
         """Shader and pipeline caches; they are rebuilt while playing."""
