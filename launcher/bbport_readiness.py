@@ -3,11 +3,29 @@
 import json
 from pathlib import Path
 import re
+import shutil
 import tempfile
 
 
 def valid_trophy_key(value):
     return isinstance(value, str) and re.fullmatch(r'[0-9a-fA-F]{32}', value) is not None
+
+
+def import_trophy_key(source, user_dir):
+    """Copies a valid keys.json into the saves folder the game reads. Returns its path.
+    ValueError: not a trophy keys file. OSError: the copy failed."""
+    data = json.loads(Path(source).read_text(encoding='utf-8-sig'))
+    try:
+        key = data['TrophyKeySet']['ReleaseTrophyKey']
+    except (KeyError, TypeError):
+        raise ValueError('TrophyKeySet.ReleaseTrophyKey is missing')
+    if not valid_trophy_key(key):
+        raise ValueError('ReleaseTrophyKey must be 32 hexadecimal characters')
+    destination = Path(user_dir) / 'keys.json'
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if Path(source).resolve() != destination.resolve():
+        shutil.copy2(source, destination)
+    return destination
 
 
 def _item(label, level, detail):

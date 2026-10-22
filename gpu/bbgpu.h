@@ -43,6 +43,27 @@ uint32_t bbgpu_atlas_route_pad(uint32_t buttons, uint8_t lx, uint8_t ly, uint8_t
 void bbgpu_trophy_configure(const char *game_dir, const char *user_dir, int32_t language);
 void bbgpu_trophy_load(const int64_t *timestamps, uint32_t count);
 void bbgpu_trophy_unlocked(int32_t id, int64_t timestamp);
+/* Summary for sceNpTrophyGetGameInfo. Counts come from the trophy pack; progress_percentage and
+ * platinum_id are -1 while no pack/key metadata is available. Returns the number of trophies. */
+typedef struct {
+    int32_t num_trophies;
+    int32_t num_platinum;
+    int32_t num_gold;
+    int32_t num_silver;
+    int32_t num_bronze;
+    int32_t unlocked_trophies;
+    int32_t unlocked_platinum;
+    int32_t unlocked_gold;
+    int32_t unlocked_silver;
+    int32_t unlocked_bronze;
+    int32_t progress_percentage; /* -1 without metadata */
+    int32_t platinum_id;         /* -1 without metadata */
+    int32_t base_locked;         /* locked non-platinum trophies */
+    char title[128];
+    char description[1024];
+} BbTrophySummary;
+int bbgpu_trophy_summary(BbTrophySummary *out);
+int bbgpu_trophy_is_unlocked(int32_t id);
 /* Called at the start of every frame submission (sceVideoOutSubmitFlip / SubmitEopFlip), on the
  * game's thread that submits it: the loader's per-frame work for the engine features. */
 void bbgpu_set_frame_callback(void (*callback)(void));
@@ -63,6 +84,7 @@ typedef struct {
     int32_t id;
     int32_t hidden;       /* a secret one: shown once earned */
     int32_t score;        /* Gamerscore, -1 when the grade is not known */
+    int32_t grade;        /* 0 unknown, 1 platinum, 2 gold, 3 silver, 4 bronze */
     int64_t unlocked_at;  /* Unix seconds, 0 while locked */
     char name[128];       /* UTF-8 */
     char description[256];

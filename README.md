@@ -20,6 +20,8 @@ The objective of this fork is to take the port's barebones Linux launcher and de
    - Matched the Windows launcher's feature set: graphics presets and FSR 3.1/FSR 4/DLSS selection, internal-resolution scaling and persistence, mods and patches, Hunter's Dream sign-in and co-op setup, launch diagnostics, restart supervision, and desktop integration.
    - Added strict XDG configuration, a six-language UI, internal-resolution calculations, and a native GTK4/libadwaita layout on top of the original launcher.
    - Shader precompile controls: the automatic pre-build on launch (`BB_SHADER_PREBUILD`) and **Precompile shaders now**, which runs the pipeline warm-up in a short game run and exits. Shaders never recorded yet still compile once, the first time they are drawn.
+   - Trophy keys import in **Game → Trophy keys**: names, descriptions, grades and Gamerscore from your own trophy pack, plus the local unlock history and automatic platinum.
+   - Discord Rich Presence: `run.sh` starts the bundled companion beside the game (toggle in the graphics performance settings); it shows area, boss, level, Echoes and Insight.
    - The Windows launcher is not replaced or purged: it remains maintained in the Windows tree/branch (`windows_laucnher/`), and both launchers share the renderer, settings keys (`bbport.ini`), and preparation scripts.
    - Linux packaging (`launcher/bb-launcher.sh`, `--install-desktop`, Nix/AppImage) stays in this branch; Windows packaging stays with the Windows launcher.
    - Shared online network and Hunter's Dream account logic live in [`launcher/bbport_net.py`](launcher/bbport_net.py); bundled prompt mods are in [`bundled/`](bundled/) and [`mods/`](mods/); third-party licensing is preserved in [`licenses/`](licenses/).

@@ -411,6 +411,18 @@ EN = {
     'Шейдеры скомпилированы. Следующий запуск будет быстрее.':
         'Shaders precompiled. The next launch starts faster.',
     'Не удалось скомпилировать шейдеры (код {}).': 'Shader precompile failed (exit code {}).',
+    'Ключи трофеев': 'Trophy keys',
+    'Импорт keys.json': 'Import keys.json',
+    'Выберите keys.json': 'Choose keys.json',
+    'Нет keys.json: имена и описания трофеев не отображаются':
+        'No keys.json: trophy names and details are hidden',
+    'keys.json установлен': 'keys.json installed',
+    'keys.json установлен, но ключ неверный': 'keys.json installed, but the key is invalid',
+    'Не удалось установить ключи трофеев: {}': 'Could not install trophy keys: {}',
+    'Ключи трофеев установлены. Имена появятся после запуска игры.':
+        'Trophy keys installed. Names appear after the game starts.',
+    'Показывать область, босса и прогресс в Discord':
+        'Show area, boss and progress in Discord',
 }
 
 # Multi-language translation catalogs keyed by canonical English text
@@ -775,6 +787,18 @@ FR = {
         'Shaders précompilés. Le prochain lancement sera plus rapide.',
     'Shader precompile failed (exit code {}).':
         'Échec de la précompilation des shaders (code {}).',
+    'Trophy keys': 'Clés de trophées',
+    'Import keys.json': 'Importer keys.json',
+    'Choose keys.json': 'Choisir keys.json',
+    'No keys.json: trophy names and details are hidden':
+        'Aucun keys.json : les noms et descriptions des trophées sont masqués',
+    'keys.json installed': 'keys.json installé',
+    'keys.json installed, but the key is invalid': 'keys.json installé, mais la clé est invalide',
+    'Could not install trophy keys: {}': 'Impossible d installer les clés de trophées : {}',
+    'Trophy keys installed. Names appear after the game starts.':
+        'Clés de trophées installées. Les noms apparaîtront après le démarrage du jeu.',
+    'Show area, boss and progress in Discord':
+        'Afficher la zone, le boss et la progression dans Discord',
 }
 
 RU = {
@@ -1480,6 +1504,16 @@ ZH = {
     'Wait for the shader precompile to finish.': '请等待着色器预编译完成。',
     'Shaders precompiled. The next launch starts faster.': '着色器已预编译。下次启动会更快。',
     'Shader precompile failed (exit code {}).': '着色器预编译失败（退出码 {}）。',
+    'Trophy keys': '奖杯密钥',
+    'Import keys.json': '导入 keys.json',
+    'Choose keys.json': '选择 keys.json',
+    'No keys.json: trophy names and details are hidden': '没有 keys.json：奖杯名称和说明不会显示',
+    'keys.json installed': 'keys.json 已安装',
+    'keys.json installed, but the key is invalid': 'keys.json 已安装，但密钥无效',
+    'Could not install trophy keys: {}': '无法安装奖杯密钥：{}',
+    'Trophy keys installed. Names appear after the game starts.':
+        '奖杯密钥已安装。游戏启动后会显示名称。',
+    'Show area, boss and progress in Discord': '在 Discord 中显示区域、Boss 和进度',
 }
 
 KO = {
@@ -1836,6 +1870,18 @@ KO = {
     'Wait for the shader precompile to finish.': '셰이더 미리 컴파일이 끝날 때까지 기다리세요.',
     'Shaders precompiled. The next launch starts faster.': '셰이더를 미리 컴파일했습니다. 다음 실행이 더 빨라집니다.',
     'Shader precompile failed (exit code {}).': '셰이더 미리 컴파일 실패 (종료 코드 {}).',
+    'Trophy keys': '트로피 키',
+    'Import keys.json': 'keys.json 가져오기',
+    'Choose keys.json': 'keys.json 선택',
+    'No keys.json: trophy names and details are hidden':
+        'keys.json이 없습니다: 트로피 이름과 설명이 표시되지 않습니다',
+    'keys.json installed': 'keys.json 설치됨',
+    'keys.json installed, but the key is invalid':
+        'keys.json이 설치되었지만 키가 잘못되었습니다',
+    'Could not install trophy keys: {}': '트로피 키를 설치할 수 없습니다: {}',
+    'Trophy keys installed. Names appear after the game starts.':
+        '트로피 키를 설치했습니다. 게임을 시작하면 이름이 표시됩니다.',
+    'Show area, boss and progress in Discord': 'Discord에 지역, 보스 및 진행 상황 표시',
 }
 
 JA = {
@@ -2192,6 +2238,18 @@ JA = {
     'Wait for the shader precompile to finish.': 'シェーダーの事前コンパイルが終わるまでお待ちください。',
     'Shaders precompiled. The next launch starts faster.': 'シェーダーを事前コンパイルしました。次回の起動が速くなります。',
     'Shader precompile failed (exit code {}).': 'シェーダーの事前コンパイルに失敗しました（終了コード {}）。',
+    'Trophy keys': 'トロフィーキー',
+    'Import keys.json': 'keys.json をインポート',
+    'Choose keys.json': 'keys.json を選択',
+    'No keys.json: trophy names and details are hidden':
+        'keys.json がありません: トロフィー名と説明は表示されません',
+    'keys.json installed': 'keys.json はインストール済みです',
+    'keys.json installed, but the key is invalid':
+        'keys.json はインストール済みですが、キーが無効です',
+    'Could not install trophy keys: {}': 'トロフィーキーをインストールできませんでした: {}',
+    'Trophy keys installed. Names appear after the game starts.':
+        'トロフィーキーをインストールしました。ゲーム起動後に名前が表示されます。',
+    'Show area, boss and progress in Discord': 'Discord にエリア、ボス、進行状況を表示',
 }
 
 CATALOGS = {

@@ -32,6 +32,26 @@ bool HasMetadata();
 int EarnedScore();
 int TotalScore();
 
+struct Summary {
+    int num_trophies = 0;
+    int num_platinum = 0;
+    int num_gold = 0;
+    int num_silver = 0;
+    int num_bronze = 0;
+    int unlocked_trophies = 0;
+    int unlocked_platinum = 0;
+    int unlocked_gold = 0;
+    int unlocked_silver = 0;
+    int unlocked_bronze = 0;
+    int progress_percentage = -1;
+    int platinum_id = -1;
+    int base_locked = 0;
+    std::string title;
+    std::string description;
+};
+Summary GetSummary();
+bool IsUnlocked(int id);
+
 // Pure score calculation, also used by the fixture test.
 void AssignScores(std::vector<Entry>& entries);
 

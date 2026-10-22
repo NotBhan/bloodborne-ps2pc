@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'launcher'))
 from bbport_readiness import check_readiness
+from bbport_readiness import import_trophy_key
 from bbport_readiness import save_title_id
 
 TEMP_PARENT = Path(__file__).resolve().parents[1] / 'out'
@@ -51,6 +52,24 @@ class LauncherReadinessTests(unittest.TestCase):
             rows = check_readiness(game, user, lambda _: None)
             self.assertEqual(rows[1]['level'], 'error')
             self.assertEqual(rows[2]['level'], 'warning')
+
+    def test_import_trophy_key_validates_and_copies(self):
+        TEMP_PARENT.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=TEMP_PARENT) as temporary:
+            root = Path(temporary)
+            user = root / 'user'
+            source = root / 'keys.json'
+            source.write_text(json.dumps({'TrophyKeySet': {'ReleaseTrophyKey': 'ab' * 16}}),
+                              encoding='utf-8')
+            target = import_trophy_key(source, user)
+            self.assertEqual(target, user / 'keys.json')
+            self.assertEqual(target.read_text(encoding='utf-8'), source.read_text(encoding='utf-8'))
+            bad = root / 'bad.json'
+            bad.write_text('{"TrophyKeySet":{"ReleaseTrophyKey":"nope"}}', encoding='utf-8')
+            with self.assertRaises(ValueError):
+                import_trophy_key(bad, user)
+            with self.assertRaises(OSError):
+                import_trophy_key(root / 'missing.json', user)
 
     def test_save_id_comes_from_game_metadata(self):
         TEMP_PARENT.mkdir(exist_ok=True)

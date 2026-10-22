@@ -98,6 +98,11 @@ pkgs.stdenv.mkDerivation {
     install -m755 out/bb-probe $d/bin/bb-probe
     install -m755 out/bb-gpu-capabilities $d/bin/bb-gpu-capabilities
     install -Dm755 out/gpu/libbbgpu.so $d/bin/gpu/libbbgpu.so
+    if [ -x "out/companions/Discord Rich Presence/BloodborneRPC" ]; then
+      mkdir -p "$d/companions/Discord Rich Presence"
+      install -m755 "out/companions/Discord Rich Presence/BloodborneRPC" "$d/companions/Discord Rich Presence/BloodborneRPC"
+      cp "out/companions/Discord Rich Presence/companion.json" "out/companions/Discord Rich Presence/config.json" "$d/companions/Discord Rich Presence/"
+    fi
     runHook postInstall
   '';
   postFixup = ''

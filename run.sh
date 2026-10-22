@@ -253,13 +253,35 @@ consecutive_restarts=0
 max_consecutive_restarts=1
 min_session_duration=${BB_RESTART_RESET_SECS:-2}
 
+rpc_bin=""
+if [[ ${BB_DISCORD_RPC:-1} != 0 ]]; then
+    for candidate in "companions/Discord Rich Presence/BloodborneRPC" \
+                     "out/companions/Discord Rich Presence/BloodborneRPC"; do
+        if [[ -x $candidate ]]; then rpc_bin=$PWD/$candidate; break; fi
+    done
+fi
+rpc_pid=""
+stop_children() {
+    kill -TERM "$mod_pid" 2>/dev/null || true
+    if [[ -n $rpc_pid ]]; then kill -TERM "$rpc_pid" 2>/dev/null || true; fi
+}
+
 while true; do
     session_start=$SECONDS
     "$probe" "${probe_args[@]}" &
     mod_pid=$!
-    trap 'kill -TERM "$mod_pid" 2>/dev/null || true' TERM INT
+    trap stop_children TERM INT
+    if [[ -n $rpc_bin ]]; then
+        ( cd "$(dirname "$rpc_bin")" && BB_GAME_PID=$mod_pid exec "$rpc_bin" ) &
+        rpc_pid=$!
+    fi
     mod_status=0
     wait "$mod_pid" || mod_status=$?
+    if [[ -n $rpc_pid ]]; then
+        kill -TERM "$rpc_pid" 2>/dev/null || true
+        wait "$rpc_pid" 2>/dev/null || true
+        rpc_pid=""
+    fi
     # An interrupted wait must finish the child before removing its mounted view.
     if kill -0 "$mod_pid" 2>/dev/null; then wait "$mod_pid" || mod_status=$?; fi
     session_duration=$(( SECONDS - session_start ))

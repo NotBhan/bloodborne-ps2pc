@@ -567,6 +567,11 @@ class GameEnvironmentTests(unittest.TestCase):
         env = launcher.game_environment(self.settings(precompile_shaders=False))
         self.assertEqual(env["BB_SHADER_PREBUILD"], "0")
 
+    def test_discord_rpc_setting_reaches_the_runner(self):
+        self.assertEqual(launcher.game_environment(self.settings())["BB_DISCORD_RPC"], "1")
+        env = launcher.game_environment(self.settings(discord_rpc=False))
+        self.assertEqual(env["BB_DISCORD_RPC"], "0")
+
     def test_all_optional_settings_are_exported(self):
         user = self.root / "saves"
         dlc = self.root / "addcont"

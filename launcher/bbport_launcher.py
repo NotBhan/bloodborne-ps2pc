@@ -44,6 +44,7 @@ from bbport_assets import (
     validate_fsr4_file,
 )
 from bbport_i18n import language, set_language, tr
+from bbport_readiness import import_trophy_key, valid_trophy_key
 
 import gi
 
@@ -212,6 +213,7 @@ DEFAULTS = {
     "readbacks": "",
     "mangohud": False,
     "precompile_shaders": True,
+    "discord_rpc": True,
     "frame_stats": False,
     "gpu_profile": False,
     "vk_validation": False,
@@ -242,7 +244,7 @@ INI_DEFAULTS = {
 }
 
 BOOL_SETTINGS = {"mods_enabled", "fullscreen", "hdr", "mangohud", "precompile_shaders",
-                 "frame_stats", "gpu_profile", "vk_validation", "start_minimized",
+                 "discord_rpc", "frame_stats", "gpu_profile", "vk_validation", "start_minimized",
                  "close_to_tray", "check_updates", "show_confirmation", "reduce_motion"}
 STRING_SETTINGS = {"ui_language", "control_scheme", "game_dir", "user_dir", "mods_dir", "patches_dir",
                     "language", "player_name", "dlc_dir", "present_mode", "fps_mode",
@@ -433,6 +435,7 @@ def game_environment(s):
     if s["vk_validation"]:
         env["BB_VK_VALIDATION"] = "1"
     env["BB_SHADER_PREBUILD"] = "1" if s.get("precompile_shaders", True) else "0"
+    env["BB_DISCORD_RPC"] = "1" if s.get("discord_rpc", True) else "0"
     for item in s["extra_env"].split():
         if "=" in item:
             key, value = item.split("=", 1)
@@ -1391,6 +1394,11 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.precompile_button.connect("clicked", self.on_precompile_shaders)
         self.precompile_build_row.add_suffix(self.precompile_button)
         perf.add(self.precompile_build_row)
+        self.discord_row = Adw.SwitchRow(
+            title="Discord Rich Presence",
+            subtitle=tr("Показывать область, босса и прогресс в Discord"),
+            active=self.settings.get("discord_rpc", True))
+        perf.add(self.discord_row)
         self.profile_row = Adw.SwitchRow(title=tr("Профиль GPU в журнале"),
                                          subtitle="BB_GPU_PROFILE",
                                          active=self.settings["gpu_profile"])
@@ -1435,6 +1443,12 @@ class LauncherWindow(Adw.ApplicationWindow):
                                       self.on_reset_user)
         self.user_row.add_suffix(self.user_reset)
         game.add(self.user_row)
+
+        self.trophy_row = Adw.ActionRow(title=tr("Ключи трофеев"))
+        self.trophy_row.add_suffix(flat_button("document-open-symbolic", tr("Импорт keys.json"),
+                                               self.on_import_trophy_keys))
+        game.add(self.trophy_row)
+        self.refresh_trophy_status()
 
         self.player_row = Adw.EntryRow(title=tr("Имя охотника"),
                                        text=self.settings.get("player_name", ""))
@@ -2175,8 +2189,47 @@ class LauncherWindow(Adw.ApplicationWindow):
         def chosen(path):
             self.settings["user_dir"] = path
             self.update_user_status()
+            self.refresh_trophy_status()
             self.store()
         self.choose_folder(tr("Папка сохранений"), self.user_dir(), chosen)
+
+    def refresh_trophy_status(self):
+        if not hasattr(self, "trophy_row"):
+            return
+        key_file = self.user_dir() / "keys.json"
+        if not key_file.is_file():
+            self.trophy_row.set_subtitle(tr("Нет keys.json: имена и описания трофеев не отображаются"))
+            return
+        try:
+            data = json.loads(key_file.read_text(encoding="utf-8-sig"))
+            valid = valid_trophy_key(data["TrophyKeySet"]["ReleaseTrophyKey"])
+        except (OSError, ValueError, KeyError, TypeError):
+            valid = False
+        self.trophy_row.set_subtitle(tr("keys.json установлен") if valid
+                                     else tr("keys.json установлен, но ключ неверный"))
+
+    def on_import_trophy_keys(self, _button):
+        dialog = Gtk.FileDialog(title=tr("Выберите keys.json"))
+
+        def finish(dialog, result):
+            try:
+                file = dialog.open_finish(result)
+            except GLib.Error:
+                return
+            path = file.get_path()
+            if not path:
+                return
+            try:
+                import_trophy_key(path, self.user_dir())
+            except (OSError, ValueError) as error:
+                self.toasts.add_toast(Adw.Toast(
+                    title=tr("Не удалось установить ключи трофеев: {}").format(error)))
+                return
+            self.refresh_trophy_status()
+            self.toasts.add_toast(Adw.Toast(
+                title=tr("Ключи трофеев установлены. Имена появятся после запуска игры.")))
+
+        dialog.open(self, None, finish)
 
     def on_reset_user(self, _button):
         self.settings["user_dir"] = ""
@@ -2457,6 +2510,8 @@ class LauncherWindow(Adw.ApplicationWindow):
             s["mangohud"] = self.mangohud_row.get_active()
         if hasattr(self, "precompile_row"):
             s["precompile_shaders"] = self.precompile_row.get_active()
+        if hasattr(self, "discord_row"):
+            s["discord_rpc"] = self.discord_row.get_active()
         if hasattr(self, "stats_row"):
             s["frame_stats"] = self.stats_row.get_active()
         if hasattr(self, "profile_row"):

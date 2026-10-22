@@ -7,6 +7,14 @@ Planned work is in [ROADMAP.md](ROADMAP.md).
 
 ## Unreleased
 
+- **Trophies:** `sceNpTrophyGetGameInfo` reports real counts and progress,
+  `sceNpTrophyGetTrophyInfo` returns names/descriptions/grade/unlock state, and the platinum is
+  granted automatically when every base trophy is unlocked. The launcher can import `keys.json`
+  from **Game → Trophy keys**; missing keys or packs are reported instead of failing silently.
+- **Discord Rich Presence:** the bundled companion now builds and runs on Linux (Unix-socket
+  IPC, `/proc/<pid>/mem`, same-user ptrace allowed by the game). `run.sh` starts it with the
+  game and stops it on exit; the launcher has a toggle and the presence works offline, online
+  and in co-op.
 - **Shader precompile:** the performance settings now expose the automatic shader pre-build
   (`BB_SHADER_PREBUILD`) and a **Precompile shaders now** action. It runs the pipeline warm-up
   in a short game run (`BB_PRECOMPILE_ONLY`) that exits by itself, so recorded shaders no

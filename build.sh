@@ -104,6 +104,15 @@ fi
 echo "Built $PWD/out/bb-probe"
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror tools/gpu_capabilities.c "${libraries[@]}" -o out/bb-gpu-capabilities
+# Discord Rich Presence companion (tools/bloodborne_rpc): run.sh starts it beside the game.
+if RPCXX=$(command -v c++ || command -v g++); then
+    rpc="$PWD/out/companions/Discord Rich Presence"
+    mkdir -p "$rpc"
+    "$RPCXX" -std=c++17 -O2 -Wall -Wextra -Werror -pthread tools/bloodborne_rpc/main.cpp \
+        -o "$rpc/BloodborneRPC"
+    cp tools/bloodborne_rpc/companion.json tools/bloodborne_rpc/config.json "$rpc/"
+    echo "Built $rpc/BloodborneRPC"
+fi
 if [[ ${1:-} == --test ]]; then
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -o out/pad-test
     out/pad-test
