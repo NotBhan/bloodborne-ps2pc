@@ -839,8 +839,7 @@ def game_environment(s):
     env['BB_PORT_VERSION'] = VERSION
     env['BB_CLIENT_VERSION'] = CLIENT_VERSION  # what shadNet and The Hunter's Dream see
     env['BB_GAME_DIR'] = expanded_path(s['game_dir'])
-    if s['user_dir']:
-        env['BB_USER_DIR'] = expanded_path(s['user_dir'])
+    env['BB_USER_DIR'] = expanded_path(s['user_dir']) if s['user_dir'] else str(DATA_DIR / 'user')
     if s['dlc_dir']:
         env['BB_DLC_DIR'] = expanded_path(s['dlc_dir'])
     env['BB_MODS_DIR'] = expanded_path(s['mods_dir'] or DATA_DIR / 'mods')

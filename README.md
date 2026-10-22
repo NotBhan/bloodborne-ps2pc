@@ -43,8 +43,9 @@ See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
   Gamerscore now come from your own trophy pack and keys. The platinum is granted when every
   base trophy is unlocked, per-trophy info and unlock state are implemented, and both launchers
   can import `keys.json`.
-- **Discord Rich Presence.** The bundled companion now runs on Windows and Linux, starts with
-  the game when present (launcher toggle), and shows the area, level, Blood Echoes and Insight.
+- **Discord Rich Presence.** The bundled companion runs on Windows and Linux, starts with the
+  game when present (launcher toggle), and shows the game name and hunter level. It switches to
+  **Platinum Trophy Earned** when every trophy in the local cache is unlocked.
 - **Shader precompile controls.** A switch controls the automatic pre-build, and **Precompile
   shaders now** runs the pipeline warm-up in a short game run that exits by itself. Recorded
   shaders no longer wait for the first fight or area.
@@ -58,15 +59,20 @@ See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 **Launcher and setup**
 - A setup wizard on first start that installs the game from your own ZIP or PKG dump, checks
   the game files, saves and trophy key, and can be reopened from **Game & saves → Setup wizard**.
-- Named pages: Overview, Graphics, Display, Game & saves, Mods & patches, Online, System and Diagnostics.
+- Named pages: Overview, Trophies, Graphics, Display, Game & saves, Mods & patches, Online,
+  System and Diagnostics.
+- Overview shows total play time and a game-only activity feed: sessions and real trophy
+  unlocks, never launcher/settings noise.
+- Trophies are grouped into Unlocked and Locked sections with progress and grade counts.
 - Every setting from the old launcher is still available; startup options are marked as applying at the next launch.
 - A live Diagnostics page shows process state, exit code, runtime facts, paths and the session log (copy, save or clear).
 - `Play Bloodborne.exe` starts the game straight away with your saved settings.
 - Update notifications for this fork's full releases.
-- Discord Rich Presence (area, level, Echoes, Insight) when the bundled companion runs;
-  toggle it under System → Engine (Advanced in the classic launcher).
-- Trophy names, descriptions, grades and Gamerscore from your own trophy pack, with an
-  **Import trophy keys** action; local unlock history and platinum auto-grant included.
+- Discord Rich Presence (game name, hunter level, Platinum state) when the bundled companion
+  runs; toggle it under System → Engine (Advanced in the classic launcher).
+- Trophy names, descriptions, grades and progress from your own trophy pack, with an
+  **Import trophy keys** action; the launcher separates unlocked and locked trophies, and the
+  platinum is granted automatically when every base trophy is unlocked.
 
 **Graphics**
 - NVIDIA DLSS (GeForce RTX 20 series and newer), AMD FSR 3.1 and FSR 4, native-resolution TAA.

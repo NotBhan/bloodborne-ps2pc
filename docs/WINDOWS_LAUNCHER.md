@@ -46,7 +46,8 @@ the renderer, `bbport.ini` settings keys, and preparation scripts.
 
 | Page | Contents |
 |---|---|
-| **Overview** | Launch state, offline/online/co-op mode, primary Play/Stop action, readiness checks, current graphics summary, quick links, update notice. |
+| **Overview** | Launch state, offline/online/co-op mode, primary Play/Stop action, readiness checks, current graphics summary, total play time, recent game/trophy activity, quick links, update notice. |
+| **Trophies** | Local progress, earned/total and grade counts, unlocked and locked sections, unlock dates and descriptions. Unavailable data is reported truthfully. |
 | **Graphics** | Graphics presets, upscaler and preset, live resolution, sharpening, object-motion vectors, frame generation, image effects, video-memory behavior, overlay. FSR 4 asset download and status. |
 | **Display** | Output resolution, HUD position, fullscreen, HDR, frame-rate mode, unlocked-mode limit, frames ahead, presentation mode. |
 | **Game & saves** | Game folder, DLC folder, saves folder, trophy keys, language, hunter name, skip-intro, button prompts, mouse, keyboard. Install-from-archive and readiness actions. |
@@ -83,10 +84,12 @@ The classic Tk launcher keeps both controls on its **Advanced** page.
 
 When `companions/Discord Rich Presence/BloodborneRPC.exe` is present, the launcher starts it
 with the game. **System → Engine → Discord Rich Presence** (classic launcher: **Advanced**;
-default on, `BB_DISCORD_RPC=0` disables it) controls it. It shows the area, level, Blood Echoes
-and Insight; its settings are
-in `config.json` next to the executable and its log is
-`%LOCALAPPDATA%\bbport-launcher\rpc.log`. The companion only reads the game's memory.
+default on, `BB_DISCORD_RPC=0` disables it) controls it. It shows the game name and hunter
+level, and switches to **Platinum Trophy Earned** when every trophy in the local cache is
+unlocked; area names, Echoes and Insight are not published. Its settings are in `config.json`
+next to the executable and its log is `%LOCALAPPDATA%\bbport-launcher\rpc.log`. The companion
+reads the game's memory and the local `trophies.txt` / `trophy_cache/metadata.json` (through
+`BB_USER_DIR`, or `user_dir` in `config.json`).
 
 ## Trophy keys
 

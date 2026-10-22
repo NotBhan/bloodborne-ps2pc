@@ -24,6 +24,7 @@ ApplicationWindow {
 
     function pageTitle() {
         switch (page) {
+        case "Trophies": return "Trophies"
         case "Graphics": return "Graphics"
         case "Display": return "Display"
         case "Game": return "Game & saves"
@@ -37,6 +38,7 @@ ApplicationWindow {
     }
     function pageSubtitle() {
         switch (page) {
+        case "Trophies": return "Local progress and trophy unlocks"
         case "Graphics": return "Upscaling, effects and frame generation"
         case "Display": return "Output, frame pacing and presentation"
         case "Game": return "Game files, saves and input"
@@ -107,6 +109,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+5"; onActivated: window.openPage("Mods") }
     Shortcut { sequence: "Ctrl+6"; onActivated: window.openPage("Online") }
     Shortcut { sequence: "Ctrl+7"; onActivated: window.openPage("System") }
+    Shortcut { sequence: "Ctrl+8"; onActivated: window.openPage("Trophies") }
     Shortcut { sequence: "Ctrl+L"; onActivated: window.openPage("Logs") }
     Shortcut { sequence: "Ctrl+F"; onActivated: { if (window.settingsPage) search.forceActiveFocus() } }
 
@@ -208,6 +211,11 @@ ApplicationWindow {
                 onOpenPage: (pageName, category, section, key) =>
                             window.openSettingsPage(pageName, category, section, key)
                 onOpenSetup: (step) => window.openWizard(step)
+            }
+
+            TrophiesPage {
+                anchors.fill: parent
+                visible: window.page === "Trophies"
             }
 
             DiagnosticsPage {

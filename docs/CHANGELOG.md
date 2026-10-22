@@ -5,6 +5,19 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
+## Unreleased
+
+- **Trophies page:** a new top-level page shows local progress, grade counts and separate
+  **Unlocked** and **Locked** sections, using the same read-only trophy cache/history as the
+  game. No placeholder names, fake rarity or invented completion.
+- **Activity and play time:** Overview now shows total play time and only real game activity
+  (sessions and trophy unlocks). Launcher/settings events stay out of the feed.
+- **Discord Rich Presence:** presence is the game name and hunter level, with a
+  **Platinum Trophy Earned** state when every cached trophy is unlocked. Echoes, Insight,
+  area/boss text and the attribute tooltip are no longer published.
+- **GUI consistency:** the trophy summary and activity rows follow the existing launcher
+  typography and spacing; long names/descriptions elide instead of expanding the layout.
+
 ## 1.10.7 (2026-10-22)
 
 - **Trophies:** `sceNpTrophyGetGameInfo` now reports real counts, grade splits and progress;

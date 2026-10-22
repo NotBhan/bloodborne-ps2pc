@@ -45,6 +45,7 @@ Rectangle {
         Repeater {
             model: rail.locked ? [] : [
                 {kind: "overview", page: "Home", label: "Overview"},
+                {kind: "trophy", page: "Trophies", label: "Trophies"},
                 {kind: "graphics", page: "Graphics", label: "Graphics"},
                 {kind: "display", page: "Display", label: "Display"},
                 {kind: "folder", page: "Game", label: "Game & saves"},

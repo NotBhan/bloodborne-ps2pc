@@ -30,6 +30,8 @@
 #include <fstream>
 #include <map>
 #include <optional>
+#include <set>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -51,9 +53,6 @@ constexpr int PGD_READ_SIZE = 0x98;
 
 struct AttrDef { const char* name; int off; };
 constexpr AttrDef PGD_ATTR_DEFS[6] = {{"VIT", 0x40}, {"END", 0x48}, {"STR", 0x58}, {"SKL", 0x60}, {"BLT", 0x68}, {"ARC", 0x70}};
-struct TitleDef { int level; const char* name; };
-constexpr TitleDef HUNTER_TITLES[] = {{1, "Fledgling Hunter"}, {15, "Blooded Hunter"}, {40, "Seasoned Hunter"}, {80, "Veteran Hunter"}, {120, "Dreaming Hunter"}, {180, "Hunter of Hunters"}};
-
 constexpr std::array<std::pair<int32_t, const char*>, 21> BbscPlaceNames{{
     {2100, "Hunter's Dream"}, {2110, "Abandoned Old Workshop"}, {2200, "Hemwick Charnel Lane"},
     {2300, "Old Yharnam"}, {2400, "Cathedral Ward"}, {2410, "Central Yharnam"},
@@ -176,7 +175,8 @@ struct Config {
     std::string client_id; std::string process_name = "bb-probe.exe"; std::vector<uintptr_t> image_bases = {0x800000000};
     int attach_delay = 5, update_interval = 15; double poll_interval = 1.0;
     std::string large_image = "bloodborne_logo", small_image; json buttons = json::array(); bool offline_only = false;
-    bool show_titles = true, show_echoes = true, show_insight = true, show_level_up = true, show_session_levels = true, show_attributes_tooltip = true;
+    std::string user_dir;
+    bool show_level = true, show_platinum = true;
 };
 
 static Config load_config(const fs::path& path) {
@@ -195,14 +195,11 @@ static Config load_config(const fs::path& path) {
         if (j.contains("small_image")) c.small_image = j["small_image"];
         if (j.contains("buttons") && j["buttons"].is_array()) c.buttons = j["buttons"];
         if (j.contains("offline_only")) c.offline_only = j["offline_only"];
+        if (j.contains("user_dir") && j["user_dir"].is_string()) c.user_dir = j["user_dir"];
         if (j.contains("show")) {
             auto& s = j["show"];
-            if (s.contains("titles")) c.show_titles = s["titles"];
-            if (s.contains("echoes")) c.show_echoes = s["echoes"];
-            if (s.contains("insight")) c.show_insight = s["insight"];
-            if (s.contains("level_up")) c.show_level_up = s["level_up"];
-            if (s.contains("session_levels")) c.show_session_levels = s["session_levels"];
-            if (s.contains("attributes_tooltip")) c.show_attributes_tooltip = s["attributes_tooltip"];
+            if (s.contains("level")) c.show_level = s["level"];
+            if (s.contains("platinum")) c.show_platinum = s["platinum"];
         }
     } catch (...) {} return c;
 }
@@ -377,20 +374,6 @@ static std::optional<Stats> read_stats(const Process& p, uintptr_t base) {
     return s;
 }
 
-class Session {
-    static constexpr int LEVEL_UP_SECONDS = 120; int last_level_ = -1, known_level_ = -1, levels_gained_ = 0, level_up_to_ = 0; clk::time_point level_up_until_{};
-public:
-    void update(const std::optional<Stats>& stats, clk::time_point now) {
-        if (!stats) { last_level_ = -1; return; }
-        int level = stats->level;
-        if (last_level_ < 0 && known_level_ >= 0) { int diff = level - known_level_; if (diff < 0 || diff > 5) { levels_gained_ = 0; level_up_until_ = {}; } }
-        known_level_ = level;
-        if (last_level_ >= 0 && level > last_level_ && level - last_level_ <= 5) { levels_gained_ += level - last_level_; level_up_to_ = level; level_up_until_ = now + std::chrono::seconds(LEVEL_UP_SECONDS); }
-        last_level_ = level;
-    }
-    int levels_gained() const { return levels_gained_; } bool level_up_active(clk::time_point now) const { return now < level_up_until_; } int level_up_to() const { return level_up_to_; }
-};
-
 class DiscordIpc {
 #ifdef _WIN32
     HANDLE pipe_ = INVALID_HANDLE_VALUE;
@@ -515,36 +498,66 @@ private:
 #endif
 };
 
-static std::string format_thousands(int n) {
-    std::string s = std::to_string(n), out; int c = 0;
-    for (int i = (int)s.size() - 1; i >= 0; --i) { if (c > 0 && c % 3 == 0) out = ',' + out; out = s[i] + out; ++c; } return out;
+static fs::path trophy_user_dir(const Config& cfg) {
+    if (!cfg.user_dir.empty()) return fs::path(cfg.user_dir);
+    if (const char* env = std::getenv("BB_USER_DIR"); env && *env) return fs::path(env);
+    return g_exe_dir / ".." / ".." / "user";
 }
 
-static json build_presence(const std::optional<Stats>& stats, Session& session, const Config& cfg, int64_t session_start_s, clk::time_point now) {
+static bool all_trophies_earned(const Config& cfg) {
+    try {
+        const fs::path user = trophy_user_dir(cfg);
+        std::ifstream meta_file(user / "trophy_cache" / "metadata.json");
+        if (!meta_file) return false;
+        json meta; meta_file >> meta;
+        if (!meta.value("complete", false) || !meta.contains("entries") ||
+            !meta["entries"].is_array() || meta["entries"].empty()) return false;
+        std::set<int> earned;
+        std::ifstream history(user / "trophies.txt");
+        std::string line;
+        while (std::getline(history, line)) {
+            std::istringstream in(line);
+            long long id = 0, stamp = 0;
+            if (!(in >> id >> stamp)) continue;
+            if (id >= 0 && id < 128 && stamp > 0) earned.insert(static_cast<int>(id));
+        }
+        bool any = false;
+        for (const auto& entry : meta["entries"]) {
+            if (!entry.is_object()) continue;
+            const auto id = entry.find("id");
+            if (id == entry.end() || !id->is_number_integer()) continue;
+            any = true;
+            if (!earned.count(id->get<int>())) return false;
+        }
+        return any;
+    } catch (...) {
+        return false;
+    }
+}
+
+static bool platinum_earned(const Config& cfg) {
+    static bool initialized = false, value = false;
+    static clk::time_point checked{};
+    const auto now = clk::now();
+    if (initialized && now - checked < std::chrono::seconds(15)) return value;
+    initialized = true;
+    checked = now;
+    value = all_trophies_earned(cfg);
+    return value;
+}
+
+static json build_presence(const std::optional<Stats>& stats, const Config& cfg,
+                           int64_t session_start_s) {
     json data; data["large_image"] = cfg.large_image; data["start"] = session_start_s;
     if (!cfg.small_image.empty()) data["small_image"] = cfg.small_image;
     if (cfg.buttons.is_array() && !cfg.buttons.empty()) { json btns = json::array(); int n = 0; for (const auto& b : cfg.buttons) { if (n++ >= 2) break; btns.push_back(b); } data["buttons"] = std::move(btns); }
-    if (!stats) { data["details"] = "Wandering the menus"; data["state"] = "Waiting for a hunter..."; data["large_text"] = "Bloodborne PC"; return data; }
+    data["details"] = "Bloodborne";
+    data["large_text"] = "Bloodborne";
+    if (!stats) { data["state"] = "In the menus"; return data; }
 
-    const int level = stats->level; std::string title = "Hunter";
-    if (cfg.show_titles) { title = HUNTER_TITLES[0].name; for (const auto& t : HUNTER_TITLES) if (level >= t.level) title = t.name; }
-
-    if (cfg.show_level_up && session.level_up_active(now)) { char b[64]; std::snprintf(b, sizeof(b), "\u2726 Ascended to Level %d", session.level_up_to()); data["details"] = b; }
-    else if (!stats->boss_name.empty()) { data["details"] = "Boss Fight: " + stats->boss_name; }
-    else if (!stats->area_name.empty()) { data["details"] = "In " + stats->area_name; }
-    else { char b[128]; std::snprintf(b, sizeof(b), "%s \u2022 Lv %d", title.c_str(), level); data["details"] = b; }
-
-    std::vector<std::string> parts;
-    if (cfg.show_echoes) { char b[128]; std::snprintf(b, sizeof(b), "%s Echoes", format_thousands(stats->echoes).c_str()); parts.push_back(b); }
-    if (cfg.show_insight) { char b[64]; std::snprintf(b, sizeof(b), "Insight %d", stats->insight); parts.push_back(b); }
-    if (cfg.show_session_levels && session.levels_gained() > 0) { int g = session.levels_gained(); char b[64]; std::snprintf(b, sizeof(b), "+%d level%s", g, g == 1 ? "" : "s"); parts.push_back(b); }
-
-    std::string s; for (size_t i = 0; i < parts.size(); ++i) { if (i) s += " \u2022 "; s += parts[i]; } data["state"] = s;
-
-    if (cfg.show_attributes_tooltip) { std::string attrs; for (int i = 0; i < 6; ++i) { if (i) attrs += " "; attrs += PGD_ATTR_DEFS[i].name; attrs += " "; attrs += std::to_string(stats->attrs[i]); } char b[256]; std::snprintf(b, sizeof(b), "%s \u2022 Max HP %d", attrs.c_str(), stats->maxhp); data["large_text"] = b; } else { data["large_text"] = "Bloodborne PC"; }
-    for (auto it = data.begin(); it != data.end(); ++it)
-        if (it->is_string() && it->get<std::string>().size() > 128)
-            *it = it->get<std::string>().substr(0, 128);
+    if (cfg.show_platinum && platinum_earned(cfg)) data["state"] = "Platinum Trophy Earned";
+    else if (cfg.show_level) data["state"] = "Hunter Level " + std::to_string(stats->level);
+    else data["state"] = "";
     return data;
 }
 
@@ -600,11 +613,11 @@ static void run(const Config& cfg) {
             std::this_thread::sleep_for(std::chrono::seconds(5));
         }
         log("Attached to PID " + std::to_string(pid) + " (Base: " + hex(base) + ")");
-        const int64_t start_s = (int64_t)std::time(nullptr); Session session; json last_payload; auto last_sent = clk::time_point{};
+        const int64_t start_s = (int64_t)std::time(nullptr); json last_payload; auto last_sent = clk::time_point{};
         while (pid_alive(pid, check_name)) {
             if (!discord.connected()) { if (!discord.connect_pipe(cfg.client_id)) { std::this_thread::sleep_for(std::chrono::seconds(5)); continue; } }
             discord.drain(false); if (!discord.connected()) continue;
-            auto stats = read_stats(proc, base); session.update(stats, clk::now()); json payload = build_presence(stats, session, cfg, start_s, clk::now()); auto now = clk::now();
+            auto stats = read_stats(proc, base); json payload = build_presence(stats, cfg, start_s); auto now = clk::now();
             if (payload != last_payload && (now - last_sent) >= std::chrono::seconds(update_interval)) {
                 json cmd = { {"cmd", "SET_ACTIVITY"}, {"args", {{"pid", pid}, {"activity", to_discord_activity(payload)}}}, {"nonce", std::to_string((uint64_t)now.time_since_epoch().count())} };
                 if (discord.send(1, cmd.dump())) { last_payload = payload; last_sent = now; log("Presence Updated: " + payload.value("details", std::string()) + " | " + payload.value("state", std::string())); } else discord.close();

@@ -310,6 +310,52 @@ Item {
 
             Item { width: 1; height: 26 }
             Text {
+                text: "PLAY TIME"; color: Theme.textFaint; font.family: Theme.sans
+                font.pixelSize: 10; font.letterSpacing: 1.3
+            }
+            Item { width: 1; height: 4 }
+            Rectangle { width: parent.width; height: 1; color: Theme.line }
+            Text {
+                text: launcher.playtime; color: Theme.text
+                font.family: Theme.sans; font.pixelSize: 15
+            }
+            Item { width: 1; height: 18 }
+            Text {
+                text: "RECENT ACTIVITY"; color: Theme.textFaint; font.family: Theme.sans
+                font.pixelSize: 10; font.letterSpacing: 1.3
+            }
+            Item { width: 1; height: 4 }
+            Rectangle { width: parent.width; height: 1; color: Theme.line }
+            Text {
+                visible: launcher.recentActivity.length === 0
+                text: "No game activity yet."; color: Theme.textDim
+                font.family: Theme.sans; font.pixelSize: 11
+            }
+            Column {
+                width: parent.width
+                Repeater {
+                    model: launcher.recentActivity
+                    delegate: Item {
+                        width: parent.width; height: 25
+                        Row {
+                            anchors.fill: parent; spacing: 12
+                            Text {
+                                width: 42; text: modelData.time; color: Theme.textFaint
+                                font.family: Theme.mono; font.pixelSize: 10
+                            }
+                            Text {
+                                width: parent.width - 54; text: modelData.text; color: Theme.textDim
+                                font.family: Theme.sans; font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+                        }
+                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
+                    }
+                }
+            }
+
+            Item { width: 1; height: 26 }
+            Text {
                 text: "QUICK ACCESS"; color: Theme.textFaint; font.family: Theme.sans
                 font.pixelSize: 10; font.letterSpacing: 1.3
             }

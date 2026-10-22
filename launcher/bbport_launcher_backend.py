@@ -4,6 +4,7 @@ The Qt Quick view talks to this object through a small set of slots. The game st
 uses the same settings.json, bbport.ini, mods.json and run.py as the original UI.
 """
 import ctypes
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,9 @@ import webbrowser
 import zipfile
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
+
+import bbport_activity
+from bbport_trophies import load_trophy_report
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
@@ -336,6 +340,8 @@ class LauncherBackend(QObject):
     gameStarted = Signal()
     gameFinished = Signal(int, bool)  # exit code, whether the game got as far as running
     presetApplied = Signal()
+    trophiesChanged = Signal()
+    activityChanged = Signal()
     _precompileDone = Signal(int, str)  # exit code, last lines of the warm-up run
 
     def __init__(self, route=None):
@@ -367,6 +373,12 @@ class LauncherBackend(QObject):
         self._settings_revision = 0
         self._gpu_status = 'Checking graphics card…'
         self._setup_running = False
+        self._trophies = None
+        self._seen_trophy_ids = None
+        self._session_started_at = None
+        self._recent_activity = []
+        self._playtime_seconds = 0
+        self.refreshTrophies()
         self.workerNotice.connect(self._set_notice)
         self.updateAvailable.connect(self._offer_update)
         self.gpuDetected.connect(self._set_gpu_status)
@@ -844,6 +856,8 @@ class LauncherBackend(QObject):
     def _complete_game_setup(self, folder):
         self.app['game_dir'] = folder
         self._write()
+        self._seen_trophy_ids = None
+        self.refreshTrophies()
         self._setup_running = False
         self.setupRunningChanged.emit()
         info = core.game_info(folder)
@@ -877,11 +891,159 @@ class LauncherBackend(QObject):
         else:
             self.app[key] = value
         self._write()
+        if key in ('game_dir', 'user_dir'):
+            self._seen_trophy_ids = None
+            self.refreshTrophies()
 
     @Slot(str, result=bool)
     def checked(self, key):
         value = self.value(key)
         return value is True or value == '1'
+
+    # --- Trophies, play time and real game activity ------------------------------------------
+
+    def _activity_path(self):
+        return core.CONFIG_FILE.parent / 'activity.json'
+
+    @Property('QVariantList', notify=trophiesChanged)
+    def trophyEntries(self):
+        if not self._trophies or not self._trophies.metadata_available:
+            return []
+        entries = []
+        for entry in self._trophies.entries:
+            icon = ''
+            if entry.icon is not None:
+                try:
+                    icon = entry.icon.resolve().as_uri()
+                except (OSError, ValueError):
+                    icon = ''
+            unlocked = ''
+            if entry.earned and entry.unlocked_at:
+                try:
+                    unlocked = datetime.fromtimestamp(entry.unlocked_at).strftime('%d/%m/%Y %H:%M')
+                except (OSError, OverflowError, ValueError):
+                    unlocked = ''
+            entries.append({
+                'id': entry.id,
+                'name': entry.name,
+                'description': entry.description,
+                'grade': entry.grade,
+                'hidden': entry.hidden,
+                'icon': icon,
+                'earned': entry.earned,
+                'unlocked': unlocked,
+                'nameAvailable': entry.name_available,
+            })
+        return entries
+
+    @Property('QVariantMap', notify=trophiesChanged)
+    def trophySummary(self):
+        report = self._trophies
+        if report is None:
+            return {'available': False, 'complete': False, 'reason': 'No trophy data yet.',
+                    'earned': 0, 'total': 0, 'completion': 0, 'localUnlocks': 0,
+                    'stale': False, 'grades': []}
+        names = {'P': 'Platinum', 'G': 'Gold', 'S': 'Silver', 'B': 'Bronze'}
+        return {
+            'available': report.metadata_available,
+            'complete': report.metadata_complete,
+            'reason': report.reason or '',
+            'earned': report.earned,
+            'total': report.total or 0,
+            'completion': report.completion or 0,
+            'localUnlocks': report.local_unlocks,
+            'stale': report.stale,
+            'grades': [{'letter': grade, 'name': names[grade],
+                        'count': report.grade_counts.get(grade, 0)}
+                       for grade in ('P', 'G', 'S', 'B')],
+        }
+
+    @Slot()
+    def refreshTrophies(self):
+        game_dir = self.app.get('game_dir')
+        user_dir = Path(core.expanded_path(self.app.get('user_dir') or core.DATA_DIR / 'user'))
+        try:
+            report = load_trophy_report(
+                user_dir, core.expanded_path(game_dir) if game_dir else None)
+        except (OSError, ValueError, TypeError):
+            report = None
+        self._trophies = report
+        if report is not None:
+            self._record_new_trophies(report)
+        self._reload_activity()
+        self.trophiesChanged.emit()
+
+    def _record_new_trophies(self, report):
+        earned = {entry.id for entry in report.entries if entry.earned}
+        previous = self._seen_trophy_ids
+        self._seen_trophy_ids = earned
+        if previous is None:
+            return
+        for entry in report.entries:
+            if entry.id in previous or entry.id not in earned:
+                continue
+            text = (f'Trophy unlocked: {entry.name}' if entry.name_available and entry.name
+                    else f'Trophy #{entry.id} unlocked')
+            bbport_activity.record_event(self._activity_path(), 'trophy', text)
+
+    def _record_activity(self, kind, text):
+        try:
+            bbport_activity.record_event(self._activity_path(), kind, text)
+        except OSError:
+            return
+        self._reload_activity()
+
+    def _reload_activity(self):
+        try:
+            events = [event for event in bbport_activity.load_events(self._activity_path(), 50)
+                      if event['kind'] in {'session', 'trophy'}][:5]
+        except (OSError, ValueError, TypeError):
+            events = []
+        self._recent_activity = [
+            {'time': datetime.fromtimestamp(event['time']).strftime('%H:%M'),
+             'text': event['text']} for event in events
+        ]
+        self._playtime_seconds = bbport_activity.load_playtime(self._activity_path())
+        self.activityChanged.emit()
+
+    def _finish_session(self):
+        if self._session_started_at is None:
+            return
+        duration = max(0, int(time.time() - self._session_started_at))
+        self._session_started_at = None
+        try:
+            bbport_activity.add_playtime(self._activity_path(), duration)
+        except OSError:
+            pass
+        try:
+            bbport_activity.record_event(
+                self._activity_path(), 'session',
+                f'Played for {self._format_playtime(duration)}')
+        except OSError:
+            pass
+        self._reload_activity()
+
+    @staticmethod
+    def _format_playtime(seconds):
+        seconds = max(0, int(seconds))
+        hours, remainder = divmod(seconds, 3600)
+        minutes = remainder // 60
+        if hours:
+            return f'{hours} h {minutes} m'
+        if minutes:
+            return f'{minutes} m'
+        return 'Less than a minute'
+
+    @Property('QVariantList', notify=activityChanged)
+    def recentActivity(self):
+        return list(self._recent_activity)
+
+    @Property(str, notify=activityChanged)
+    def playtime(self):
+        seconds = self._playtime_seconds
+        if self._session_started_at is not None:
+            seconds += max(0, int(time.time() - self._session_started_at))
+        return self._format_playtime(seconds) if seconds else 'No play time yet'
 
     @Slot()
     def importTrophyKeys(self):
@@ -925,6 +1087,7 @@ class LauncherBackend(QObject):
             return
 
         self._set_notice('Trophy keys installed successfully.')
+        self.refreshTrophies()
         self.changed.emit()
     @Slot(str)
     def browse(self, key):
@@ -1115,6 +1278,8 @@ class LauncherBackend(QObject):
         if 'Entering original x86-64 code' in line:
             if not self._game_started:
                 self._game_started = True
+                self._session_started_at = time.time()
+                self._record_activity('session', 'Game started')
                 self.changed.emit()
                 self.gameStarted.emit()
             self._set_notice('The game is running.')
@@ -1133,6 +1298,8 @@ class LauncherBackend(QObject):
         if self.job:
             self.job.close()
             self.job = None
+        self._finish_session()
+        self.refreshTrophies()
         self.runningChanged.emit()
         self.changed.emit()
         if self._last_exit == 0:
