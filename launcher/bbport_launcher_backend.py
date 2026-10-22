@@ -137,6 +137,7 @@ FIELDS = {
         row('draw_pipe', 'Draw pipeline', 'choice', core.DRAW_PIPE),
         row('readbacks', 'GPU readbacks', 'choice', core.READBACKS),
         row('precompile_shaders', 'Precompile shaders before launch', 'toggle'),
+        row('discord_rpc', 'Discord Rich Presence', 'toggle'),
         row('extra_env', 'Extra environment variables'),
     ],
     'Diagnostics': [
@@ -188,7 +189,7 @@ SETTINGS_SECTIONS = {
     'System': [
         ('Launch', ['ui_language']),
         ('Updates', []),
-        ('Engine', ['draw_pipe', 'readbacks', 'precompile_shaders', 'extra_env']),
+        ('Engine', ['draw_pipe', 'readbacks', 'precompile_shaders', 'discord_rpc', 'extra_env']),
         ('Developer', ['debug_camera', 'debug_menu', 'frame_stats', 'gpu_profile', 'vk_validation']),
         ('Maintenance', []),
         ('Logs', []),
@@ -576,9 +577,10 @@ class LauncherBackend(QObject):
 
     @Property('QVariantList', notify=changed)
     def readiness(self):
-        return check_readiness(self.app.get('game_dir'),
-                               self.app.get('user_dir') or core.DATA_DIR / 'user',
-                               core.game_info)
+        game_dir = self.app.get('game_dir')
+        user_dir = self.app.get('user_dir') or core.DATA_DIR / 'user'
+        return check_readiness(core.expanded_path(game_dir) if game_dir else None,
+                               core.expanded_path(user_dir), core.game_info)
 
     @Slot()
     def refreshReadiness(self):

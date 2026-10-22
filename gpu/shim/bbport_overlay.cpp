@@ -1118,13 +1118,13 @@ void AchievementsTab() {
     }
     ImGui::EndDisabled();
     Note("Shows the unlock banner only; nothing is unlocked or saved.", Ink::Faint);
-    if (!BbTrophies::HasMetadata())
-        Note("Names and scores need the trophy key from your own PS4. Icons and local unlock history still work.");
-    ImGui::Dummy(ImVec2(0, Px(8.0f)));
     if (entries.empty()) {
         Note("No trophy pack in the selected game folder.", Ink::Faint);
         return;
     }
+    if (!BbTrophies::HasMetadata())
+        Note("Names and scores need the trophy key from your own PS4. Icons and local unlock history still work.");
+    ImGui::Dummy(ImVec2(0, Px(8.0f)));
     ImGuiListClipper clipper;
     clipper.Begin(total, (gallery ? 72.0f : 98.0f) * base_scale + ImGui::GetStyle().ItemSpacing.y);
     while (clipper.Step())

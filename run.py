@@ -173,20 +173,34 @@ def shader_prebuild(game, out, env):
         env['BB_SHADER_CATALOG'] = str(catalog)
 
 
-def start_companions(data, env, game_pid):
-    """Companions (tools/bloodborne_rpc: Discord Rich Presence): programs in <data>/companions/<name>/
-    that run beside the game, each started only when companions.json lists its folder name under
-    "enabled" (none by default). companion.json names the program; it gets the game's process id
-    in BB_GAME_PID. They end with the game."""
-    started = []
+def companion_folders(data, env):
+    """The companion folders to start: names listed under "enabled" in companions.json plus the
+    built-in Discord Rich Presence folder when BB_DISCORD_RPC is not 0. A package keeps the RPC
+    in companions/; a source checkout builds it into out/companions/."""
+    folders = {}
     try:
         enabled = set(json.loads((data / 'companions.json').read_text(encoding='utf-8')).get('enabled', []))
     except (OSError, ValueError):
-        return started
+        enabled = set()
     companions = data / 'companions'
     for folder in sorted(companions.iterdir() if companions.is_dir() else ()):
-        if not folder.is_dir() or folder.name not in enabled:
-            continue
+        if folder.is_dir() and folder.name in enabled:
+            folders[folder.name] = folder
+    if str(env.get('BB_DISCORD_RPC', '1')) != '0':
+        for parent in (companions, PORT / 'out' / 'companions', PORT / 'companions'):
+            folder = parent / 'Discord Rich Presence'
+            if (folder / 'BloodborneRPC.exe').is_file():
+                folders.setdefault(folder.name, folder)
+                break
+    return list(folders.values())
+
+
+def start_companions(data, env, game_pid):
+    """Programs in <data>/companions/<name>/ that run beside the game: companions.json entries
+    and the built-in Discord Rich Presence. companion.json names the program; it gets the game's
+    process id in BB_GAME_PID. They end with the game."""
+    started = []
+    for folder in companion_folders(data, env):
         try:
             spec = json.loads((folder / 'companion.json').read_text(encoding='utf-8'))
             exe = folder / spec.get('exe', '')

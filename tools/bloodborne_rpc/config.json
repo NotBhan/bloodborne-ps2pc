@@ -7,7 +7,7 @@
   "large_image": "bloodborne_logo",
   "small_image": "",
   "buttons": [],
-  "offline_only": true,
+  "offline_only": false,
   "show": {
     "titles": true,
     "echoes": true,

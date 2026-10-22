@@ -216,11 +216,16 @@ class SettingsTests(unittest.TestCase):
 
     def test_precompile_shaders_switch_and_warmup_environment(self):
         settings = launcher.validated_settings({'game_dir': 'C:/Games/CUSA03173',
-                                                'precompile_shaders': False})
+                                                'precompile_shaders': False,
+                                                'discord_rpc': False})
         self.assertEqual(launcher.game_environment(settings)['BB_SHADER_PREBUILD'], '0')
+        self.assertEqual(launcher.game_environment(settings)['BB_DISCORD_RPC'], '0')
         warm = launcher.precompile_environment({**settings, 'precompile_shaders': True})
         self.assertEqual(warm['BB_PRECOMPILE_ONLY'], '1')
         self.assertEqual(warm['BB_SHADER_PREBUILD'], '1')
+        self.assertEqual(warm['BB_DISCORD_RPC'], '0')
+        self.assertEqual(launcher.game_environment(launcher.validated_settings(
+            {'game_dir': 'C:/Games/CUSA03173'}))['BB_DISCORD_RPC'], '1')
 
     def test_warmup_environment_drops_online_settings(self):
         settings = launcher.validated_settings({'game_dir': 'C:/Games/CUSA03173',

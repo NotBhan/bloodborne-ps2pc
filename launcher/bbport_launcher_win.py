@@ -186,6 +186,7 @@ def run_command():
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bbport_lang  # noqa: E402
+import bbport_readiness  # noqa: E402
 
 LANG = 'en'
 
@@ -287,7 +288,7 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
                 'fps_mode': 'uncap', 'frame_cap': '', 'draw_pipe': '', 'readbacks': '',
                 'frames_ahead': '', 'vram_budget_mb': '', 'frame_stats': False, 'gpu_profile': False,
                 'vk_validation': False, 'extra_env': '', 'close_on_play': False,
-                'precompile_shaders': True,
+                'precompile_shaders': True, 'discord_rpc': True,
                 'check_updates': True, 'online': False, 'online_server': 'srv.shadps4.net:31313',
                 'online_webapi': '', 'online_npid': '', 'online_password': '', 'online_upnp': True,
                 'coop_name': '', 'coop_password': '', 'coop_invite': '',
@@ -867,6 +868,7 @@ def game_environment(s):
         if s[key]:
             env[name] = '1'
     env['BB_SHADER_PREBUILD'] = '1' if s.get('precompile_shaders', True) else '0'
+    env['BB_DISCORD_RPC'] = '1' if s.get('discord_rpc', True) else '0'
     for item in str(s['extra_env']).split():
         if '=' in item:
             key, value = item.split('=', 1)
@@ -2014,6 +2016,8 @@ class Launcher:
         self.check(f, 'precompile_shaders', 'app',
                    _('Precompile shaders before launch (less warm-up stutter)',
                      'Предварительно компилировать шейдеры перед запуском (меньше подтормаживаний)'))
+        self.check(f, 'discord_rpc', 'app',
+                   _('Discord Rich Presence', 'Discord Rich Presence'))
         holder = ttk.Frame(f)
         holder.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(10, 0))
         ttk.Button(holder, text=_('Desktop shortcut', 'Ярлык на рабочем столе'), command=self.shortcut).pack(side='left')
@@ -2028,6 +2032,8 @@ class Launcher:
         ttk.Label(holder, text=f'v{VERSION}', style='Muted.TLabel').pack(side='left', padx=10)
         holder = ttk.Frame(f)
         holder.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(10, 0))
+        ttk.Button(holder, text=_('Import trophy keys…', 'Импорт ключей трофеев…'),
+                   command=self.import_trophy_keys).pack(side='left', padx=(0, 6))
         ttk.Button(holder, text=_('Precompile shaders now', 'Скомпилировать шейдеры сейчас'),
                    command=self.precompile_shaders).pack(side='left', padx=(0, 6))
         ttk.Button(holder, text=_('Clear shader cache', 'Очистить кэш шейдеров'), command=self.clear_cache).pack(side='left')
@@ -2628,6 +2634,24 @@ class Launcher:
         self.messagebox.showwarning('Bloodborne', _(
             'Shader precompile failed (exit code {}).',
             'Не удалось скомпилировать шейдеры (код {}).').format(code) + (f'\n\n{detail}' if detail else ''))
+
+    def import_trophy_keys(self):
+        """Copies a keys.json into the saves folder; the game builds trophy names from it."""
+        source = self.filedialog.askopenfilename(
+            title=_('Choose your trophy keys.json', 'Выберите ваш keys.json'),
+            filetypes=[('JSON', '*.json')])
+        if not source:
+            return
+        user_dir = Path(expanded_path(self.app.get('user_dir') or DATA_DIR / 'user'))
+        try:
+            bbport_readiness.import_trophy_key(source, user_dir)
+        except (OSError, ValueError) as error:
+            self.messagebox.showwarning('Bloodborne', _(
+                'Invalid trophy keys: {}', 'Неверные ключи трофеев: {}').format(error))
+            return
+        self.messagebox.showinfo('Bloodborne', _(
+            'Trophy keys installed. Names and details appear after the game starts.',
+            'Ключи трофеев установлены. Имена и описания появятся после запуска игры.'))
 
     def clear_cache(self):
         """Shader and pipeline caches; they are rebuilt while playing."""

@@ -351,6 +351,42 @@ extern "C" void bbgpu_trophy_load(const int64_t* timestamps, uint32_t count) {
     BbOverlay::LoadTrophies(timestamps, count);
 }
 
+static int TrophyGrade(BbTrophies::Grade grade) {
+    switch (grade) {
+    case BbTrophies::Grade::Platinum: return 1;
+    case BbTrophies::Grade::Gold: return 2;
+    case BbTrophies::Grade::Silver: return 3;
+    case BbTrophies::Grade::Bronze: return 4;
+    default: return 0;
+    }
+}
+
+extern "C" int bbgpu_trophy_summary(BbTrophySummary* out) {
+    if (!out) return 0;
+    const auto summary = BbTrophies::GetSummary();
+    *out = BbTrophySummary{};
+    out->num_trophies = summary.num_trophies;
+    out->num_platinum = summary.num_platinum;
+    out->num_gold = summary.num_gold;
+    out->num_silver = summary.num_silver;
+    out->num_bronze = summary.num_bronze;
+    out->unlocked_trophies = summary.unlocked_trophies;
+    out->unlocked_platinum = summary.unlocked_platinum;
+    out->unlocked_gold = summary.unlocked_gold;
+    out->unlocked_silver = summary.unlocked_silver;
+    out->unlocked_bronze = summary.unlocked_bronze;
+    out->progress_percentage = summary.progress_percentage;
+    out->platinum_id = summary.platinum_id;
+    out->base_locked = summary.base_locked;
+    std::snprintf(out->title, sizeof(out->title), "%s", summary.title.c_str());
+    std::snprintf(out->description, sizeof(out->description), "%s", summary.description.c_str());
+    return summary.num_trophies;
+}
+
+extern "C" int bbgpu_trophy_is_unlocked(int32_t id) {
+    return BbTrophies::IsUnlocked(id) ? 1 : 0;
+}
+
 extern "C" int bbgpu_achievement_count(void) {
     return int(BbTrophies::Entries().size());
 }
@@ -363,6 +399,7 @@ extern "C" int bbgpu_achievement_get(int index, BbAchievement* out) {
     out->id = e.id;
     out->hidden = e.hidden;
     out->score = e.score;
+    out->grade = TrophyGrade(e.grade);
     out->unlocked_at = e.unlocked_at;
     std::snprintf(out->name, sizeof(out->name), "%s", e.name.c_str());
     std::snprintf(out->description, sizeof(out->description), "%s", e.description.c_str());

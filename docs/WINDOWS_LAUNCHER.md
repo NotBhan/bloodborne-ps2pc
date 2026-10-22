@@ -79,6 +79,22 @@ Shaders never recorded yet (a new enemy, effect or area) still compile once, the
 they are drawn; run the action again after a play session to warm what that session recorded.
 The classic Tk launcher keeps both controls on its **Advanced** page.
 
+## Discord Rich Presence
+
+When `companions/Discord Rich Presence/BloodborneRPC.exe` is present, the launcher starts it
+with the game. **System → Engine → Discord Rich Presence** (default on; `BB_DISCORD_RPC=0`
+disables it) controls it. It shows the area, boss fight, level, Blood Echoes and Insight; its
+settings are in `config.json` next to the executable and its log is
+`%LOCALAPPDATA%\bbport-launcher\rpc.log`. The companion only reads the game's memory.
+
+## Trophy keys
+
+Import your own `keys.json` from **Game & saves → Your data → Import trophy keys** (classic
+launcher: **Advanced → Import trophy keys…**). The game reads `<saves>/keys.json`, decrypts
+the trophy XML from your game's `trophy00.trp`, and shows names, descriptions, grades and
+Gamerscore in **Pause → System → Achievements**. Without a key, the list shows IDs and local
+unlock history only. The launcher's readiness row reports whether the pack and key are valid.
+
 ![Graphics](images/launcher-graphics.jpg)
 
 ## Architecture

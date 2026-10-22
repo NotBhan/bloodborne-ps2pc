@@ -93,10 +93,11 @@ PC enhancements
   turn one on, then restart. They do not require the Load mods switch.
 
 Discord Rich Presence
-- Optional and off by default: shows your area, boss fight, level, Blood Echoes and Insight on
-  your Discord profile (Discord must be running). To turn it on, create companions.json next to
-  Bloodborne.exe containing {"enabled": ["Discord Rich Presence"]}, then start the game. Its
-  settings are in companions\Discord Rich Presence\config.json. It only reads the game's memory.
+- On by default when the companion is present: shows your area, boss fight, level, Blood Echoes
+  and Insight on your Discord profile (Discord must be running). Turn it off in the launcher
+  (System -> Engine -> Discord Rich Presence) or with BB_DISCORD_RPC=0. Its settings are in
+  companions\Discord Rich Presence\config.json; it only reads the game's memory. The log is
+  %LOCALAPPDATA%\bbport-launcher\rpc.log.
 
 Cheats
 - Mods & patches -> Gameplay patches has cheats (never die, enemies do not see or hear you, Rally never fades,

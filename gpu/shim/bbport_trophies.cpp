@@ -27,10 +27,12 @@ constexpr int kSilverWeight = 3;
 constexpr int kGoldWeight = 6;
 constexpr int kPlatinumWeight = 12;
 constexpr std::size_t kMaxEntryBytes = 2 * 1024 * 1024;
-constexpr int kCacheVersion = 1;
+constexpr int kCacheVersion = 2;
 std::mutex mutex;
 std::vector<Entry> entries;
 bool complete_metadata = false;
+std::string game_title;
+std::string game_description;
 std::array<std::int64_t, 128> unlocks{};
 
 int Weight(Grade grade) {
@@ -176,7 +178,10 @@ bool ParseXml(const std::string& xml, std::vector<Entry>& found) {
         boost::property_tree::read_xml(stream, tree,
                                        boost::property_tree::xml_parser::trim_whitespace);
         unsigned parsed = 0;
-        for (const auto& [tag, node] : tree.get_child("trophyconf")) {
+        const auto& conf = tree.get_child("trophyconf");
+        game_title = conf.get<std::string>("title-name", "");
+        game_description = conf.get<std::string>("title-detail", "");
+        for (const auto& [tag, node] : conf) {
             if (tag != "trophy") continue;
             const auto id = node.get<int>("<xmlattr>.id", -1);
             if (id < 0 || id >= 128) continue;
@@ -280,15 +285,25 @@ void Configure(const fs::path& game_dir, const fs::path& user_dir, int language)
     std::scoped_lock lock{mutex};
     entries.clear();
     complete_metadata = false;
+    game_title.clear();
+    game_description.clear();
     try {
         const auto trp = TrpPath(game_dir);
-        if (trp.empty()) return;
+        if (trp.empty()) {
+            std::fprintf(stderr, "Trophies: no trophy pack under %s/sce_sys/trophy\n",
+                         game_dir.string().c_str());
+            return;
+        }
         const auto size = fs::file_size(trp);
         const auto modified = fs::last_write_time(trp).time_since_epoch().count();
         const auto cache_dir = user_dir / "trophy_cache";
         const auto cache_file = cache_dir / "metadata.json";
         bool has_key = false;
         const auto key = ReadKey(user_dir, has_key);
+        if (!has_key) {
+            std::fprintf(stderr, "Trophies: no trophy key in %s/keys.json; showing IDs only\n",
+                         user_dir.string().c_str());
+        }
         const auto cached = ReadFile(cache_file, 512 * 1024);
         if (!cached.empty()) {
             try {
@@ -298,6 +313,8 @@ void Configure(const fs::path& game_dir, const fs::path& user_dir, int language)
                     root.value("source_modified", std::int64_t(0)) == modified &&
                     root.value("language", -1) == language &&
                     (root.value("complete", false) || !has_key)) {
+                    game_title = root.value("title", "");
+                    game_description = root.value("description", "");
                     for (const auto& item : root.at("entries")) {
                         Entry entry;
                         entry.id = item.value("id", -1);
@@ -307,10 +324,13 @@ void Configure(const fs::path& game_dir, const fs::path& user_dir, int language)
                         entry.grade = ParseGrade(item.value("grade", "?"));
                         entry.hidden = item.value("hidden", false);
                         entry.score = item.value("score", -1);
-                        const auto icon = cache_dir / "icons" / ("TROP" + [&] {
-                            char id[8]; std::snprintf(id, sizeof(id), "%03d.PNG", entry.id);
-                            return std::string(id);
-                        }());
+                        auto icon_name = item.value("icon", "");
+                        if (icon_name.empty()) {
+                            char fallback[16];
+                            std::snprintf(fallback, sizeof(fallback), "TROP%03d.PNG", entry.id);
+                            icon_name = fallback;
+                        }
+                        const auto icon = cache_dir / "icons" / icon_name;
                         if (fs::is_regular_file(icon)) entry.icon = icon;
                         entries.push_back(std::move(entry));
                     }
@@ -327,16 +347,22 @@ void Configure(const fs::path& game_dir, const fs::path& user_dir, int language)
         entries = Extract(file, directory, cache_dir, language, key, has_key,
                           NpCommId(game_dir), complete_metadata);
         AttachUnlocks(entries);
+        if (!complete_metadata && has_key) {
+            std::fprintf(stderr, "Trophies: could not decrypt the trophy XML; check npbind.dat "
+                                 "and the ReleaseTrophyKey in keys.json\n");
+        }
         std::error_code ec;
         fs::create_directories(cache_dir, ec);
         if (!ec) {
             json root = {{"version", kCacheVersion}, {"source_size", size},
                          {"source_modified", modified}, {"language", language},
-                         {"complete", complete_metadata}, {"entries", json::array()}};
+                         {"complete", complete_metadata}, {"title", game_title},
+                         {"description", game_description}, {"entries", json::array()}};
             for (const auto& entry : entries)
                 root["entries"].push_back({{"id", entry.id}, {"name", entry.name},
                     {"description", entry.description}, {"grade", std::string(1, GradeCode(entry.grade))},
-                    {"hidden", entry.hidden}, {"score", entry.score}});
+                    {"hidden", entry.hidden}, {"score", entry.score},
+                    {"icon", entry.icon.empty() ? "" : entry.icon.filename().string()}});
             WriteFile(cache_file, root.dump(2));
         }
     } catch (...) {
@@ -385,5 +411,42 @@ int TotalScore() {
     int score = 0;
     for (const auto& entry : entries) if (entry.score > 0) score += entry.score;
     return score;
+}
+
+Summary GetSummary() {
+    std::scoped_lock lock{mutex};
+    Summary summary;
+    summary.title = game_title;
+    summary.description = game_description;
+    summary.num_trophies = int(entries.size());
+    for (const auto& entry : entries) {
+        switch (entry.grade) {
+        case Grade::Platinum: ++summary.num_platinum; summary.platinum_id = entry.id; break;
+        case Grade::Gold: ++summary.num_gold; break;
+        case Grade::Silver: ++summary.num_silver; break;
+        case Grade::Bronze: ++summary.num_bronze; break;
+        default: break;
+        }
+        if (!entry.unlocked_at) {
+            if (entry.grade != Grade::Platinum) ++summary.base_locked;
+            continue;
+        }
+        ++summary.unlocked_trophies;
+        switch (entry.grade) {
+        case Grade::Platinum: ++summary.unlocked_platinum; break;
+        case Grade::Gold: ++summary.unlocked_gold; break;
+        case Grade::Silver: ++summary.unlocked_silver; break;
+        case Grade::Bronze: ++summary.unlocked_bronze; break;
+        default: break;
+        }
+    }
+    if (summary.num_trophies > 0)
+        summary.progress_percentage = summary.unlocked_trophies * 100 / summary.num_trophies;
+    return summary;
+}
+
+bool IsUnlocked(int id) {
+    std::scoped_lock lock{mutex};
+    return id >= 0 && id < int(unlocks.size()) && unlocks[id] != 0;
 }
 } // namespace BbTrophies
