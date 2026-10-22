@@ -52,7 +52,7 @@ the renderer, `bbport.ini` settings keys, and preparation scripts.
 | **Game & saves** | Game folder, DLC folder, saves folder, trophy keys, language, hunter name, skip-intro, button prompts, mouse, keyboard. Install-from-archive and readiness actions. |
 | **Mods & patches** | Installed mods and load order, built-in enhancements, Hunter's Atlas, external patches, gameplay patches. |
 | **Online** | The Hunter's Dream sign-in and connection test, plus seamless co-op setup, hosting and invite flow. |
-| **System** | Launcher language, direct-start behavior, desktop/Steam shortcuts, updates, draw pipeline/readbacks/extra environment, developer diagnostics, maintenance. |
+| **System** | Launcher language, direct-start behavior, desktop/Steam shortcuts, updates from this fork's releases, draw pipeline/readbacks/extra environment, developer diagnostics, maintenance. |
 | **Diagnostics** | Process state, last exit code, log line/error/warning counts, runtime report, paths, copy/save/clear log, shader-cache clear, live log with severity colouring and follow mode. |
 | **Setup** | Four-step first-run wizard: welcome, game files, saves/trophies, graphics/finish. |
 
@@ -60,6 +60,13 @@ Every existing field and action from the old category workspace has a home. The 
 declared in `launcher/bbport_launcher_backend.py` (`LAUNCHER_PAGES`), and
 `tests/test_launcher_pages.py` asserts that every settings section and field is reachable
 (excluding the dedicated Diagnostics page).
+
+## Updates
+
+Update checks, the Overview notice, and **System → Install update** use
+[this fork's releases](https://github.com/NotBhan/bloodborne_pc_notbhan/releases), never the
+upstream Jgamrot package. The installed release tag is tracked separately from `VERSION`, so
+the release the build was cut from is not offered as an update.
 
 ![Graphics](images/launcher-graphics.jpg)
 

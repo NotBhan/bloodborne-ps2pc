@@ -92,13 +92,13 @@ def configure_renderer(environ=None, wine=None):
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This fork's build; the release tag includes this version.
 VERSION = '1.9.7'
-CURRENT_RELEASE_TAG = 'qml-launcher-preview-21'
+CURRENT_RELEASE_TAG = 'v1.9.7-fork.1'
 HERO_ART = PORT_DIR / 'launcher' / 'art' / 'hero.png'
 STRIP_ART = PORT_DIR / 'launcher' / 'art' / 'strip.png'
 # Co-op: the community server that answers the game's own server requests.
 COMMUNITY_SERVER = 'https://thehuntersdream.com'
-RELEASES_API = 'https://api.github.com/repos/Jgamrot/bloodborne_pc/releases/latest'
-RELEASES_PAGE = 'https://github.com/Jgamrot/bloodborne_pc/releases/latest'
+RELEASES_API = 'https://api.github.com/repos/NotBhan/bloodborne_pc_notbhan/releases/latest'
+RELEASES_PAGE = 'https://github.com/NotBhan/bloodborne_pc_notbhan/releases/latest'
 UPDATE_DIR = Path(tempfile.gettempdir()) / 'bbport-update'
 # The last answer from GitHub, so a direct launch (no launcher window) can check quietly and the
 # launcher shows the result the next time it opens. Off with check_updates like every check.
@@ -2700,13 +2700,13 @@ def version_tuple(text):
 
 
 def release_is_newer(tag):
-    """Accept the next QML-series bridge or a newer numbered stable release."""
+    """Accept the next QML-series bridge or a newer numbered fork release."""
     if tag.startswith('qml-launcher-preview-'):
         try:
             return int(tag.removeprefix('qml-launcher-preview-')) > int(CURRENT_RELEASE_TAG.removeprefix('qml-launcher-preview-'))
         except ValueError:
             return False
-    return version_tuple(tag) > version_tuple(VERSION)
+    return version_tuple(tag) > version_tuple(CURRENT_RELEASE_TAG)
 
 
 def latest_release():

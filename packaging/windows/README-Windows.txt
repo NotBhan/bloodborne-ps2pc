@@ -38,7 +38,7 @@ Starting
 - System -> "Desktop shortcut" puts Bloodborne on the desktop.
 - Updates: when a new version is out, the launcher shows a notice; System ->
   "Install update" downloads and installs it. Saves, settings and mods are kept.
-  System -> "Check for updates" checks by hand.
+  System -> "Check for updates" checks this fork's GitHub releases by hand.
 - The Qt Quick launcher currently displays English labels. The classic launcher retains its
   English, Russian, Arabic, Spanish, Portuguese, French, German, Italian, Polish, Turkish,
   Chinese, Japanese and Korean translations. Run Bloodborne.exe --classic-launcher to use it.

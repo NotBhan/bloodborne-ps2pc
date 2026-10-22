@@ -5,6 +5,14 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
+## Unreleased
+
+- **Fork update channel:** update checks and in-app installs now use
+  [this fork's releases](https://github.com/NotBhan/bloodborne_pc_notbhan/releases) instead of
+  upstream Jgamrot releases, so an update cannot replace this build with a different package.
+  Fork tags (`vX.Y.Z-fork.N`) are compared against the installed tag, so the current release
+  is not offered again.
+
 ## 1.9.7 fork.1 (2026-10-21)
 
 The first release from the merged Linux/Windows tree. It includes the Windows launcher

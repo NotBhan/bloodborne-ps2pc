@@ -62,7 +62,7 @@ See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 - Every setting from the old launcher is still available; startup options are marked as applying at the next launch.
 - A live Diagnostics page shows process state, exit code, runtime facts, paths and the session log (copy, save or clear).
 - `Play Bloodborne.exe` starts the game straight away with your saved settings.
-- Update notifications for full releases.
+- Update notifications for this fork's full releases.
 
 **Graphics**
 - NVIDIA DLSS (GeForce RTX 20 series and newer), AMD FSR 3.1 and FSR 4, native-resolution TAA.
