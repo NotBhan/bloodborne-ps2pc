@@ -5,7 +5,7 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
-## Unreleased
+## 1.10.8 (2026-10-23)
 
 - **Trophies:** the launcher groups the list into **Unlocked** and **Locked** sections. It
   records a real `Trophy unlocked: …` event when the local unlock history gains an entry.
