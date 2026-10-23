@@ -19,7 +19,9 @@ Sources checked for ideas (last on 12 October 2026): shadPS4 (our renderer match
    1.9.1 runs [BBSC](https://github.com/Classmg22/BBSC) 0.0.1 (CLS_AMG; Wozzardman's
    shadnet-p2p) from Settings > Co-op, hosted on one player's PC over Tailscale. Next: a two-PC
    test (joining, deaths, lamps, area changes, a boss, leaving), fix what breaks, then make
-   hosting simpler (same-network play without Tailscale, clearer invite and error messages).
+   hosting simpler (same-network play without Tailscale, clearer invite and error messages),
+   auto-install the seamless co-op mod, set BBSC up from the launcher, and verify the whole flow.
+   (Auto-install and setup are implemented; end-to-end verification is pending.)
    Keep an eye on deadinside28 [#130](https://github.com/deadinside28/bloodborne_pc/pull/130)
    for ideas. Ask the srv.shadps4.net admins to allow `shadPS4 Jgamrot/` for ordinary online.
 2. **Boss Rematches** (Bloodborne Enhanced features, independently implemented). A Cleric
@@ -65,6 +67,12 @@ Sources checked for ideas (last on 12 October 2026): shadPS4 (our renderer match
    (`.meta` v8, `.key` v5), keep them compatible or convert the capture's catalog. Then merge
    background shader compiling (`feature/async-pipelines`, `BB_ASYNC_PIPELINES=0` off) after
    measuring new areas. Test in the Research Hall and shadowed areas.
+7. **Setup page redesign.** Rework the launcher's setup page: its layout, flow and the
+   game/saves/trophy checks it presents. (Single-page checklist implemented in both launchers;
+   unreleased.)
+8. **Accurate control remapping for keyboard and mouse.** Make rebinding exact for every
+   action the runtime reads: keys, mouse buttons and wheel directions, modifiers, conflicts
+   and reset, with the captured input shown back before it is saved.
 
 ## Small fixes, alongside the main work
 
@@ -94,6 +102,33 @@ the shader recompiler or the pipeline cache format unless noted.
 - Dark spots on Intel CPUs (Old Hunters areas): shadPS4 `235dcabf` (RCPPS / RSQRTPS answer
   slightly differently on Intel). It changes the game's CPU code, not shaders.
 - The overlay menu kept within the screen ([Supermedo #46](https://github.com/Supermedo/bloodborne_pc/pull/46)).
+
+## To verify
+
+- **Mods, cheats and patches in campaign modes.** Confirm they can be added and actually work
+  in both online and offline campaign play: the mod overlay, the gameplay cheats and the
+  external patches, individually and together, including that an online session still hosts and
+  joins with them enabled.
+- **Face and eye geometry in DLSS.** The reported explosion is the FaceGen vertex explosion:
+  the game's FaceGen thread reads back GPU-written face vertices and can see stale memory. DLSS
+  only reads color, depth and motion and cannot alter geometry. Reproduce with the upstream
+  trigger (character creation: switch hair/beard) and check on NVIDIA, where it is reported
+  more often. Readbacks must be Relaxed or Precise; if it persists, the new "Disable Facegen"
+  patch (Settings > Graphics > Facegen off, Kyo's patch) removes it. Record which combination
+  fixes it and whether the patch has visual side effects.
+- **Bottleneck on higher-end hardware.** On a Ryzen 5 9600X with an RTX 5060 Ti 16 GB, CPU sits
+  at ~30% and GPU at ~50%. Verify what limits the frame rate (guest-code single-thread work, the
+  frame limiter, presentation or a stall) with per-thread CPU, GPU busy time and frame-pacing
+  measurements, then fix the limit or document it.
+- **Cutscene and movie frame rate.** Cutscenes and movies are locked to 48 FPS. Unlock them, or
+  allow the movie frame-rate maximum to be raised. Find what imposes the 48 (movie playback,
+  vblank, presentation or the frame limiter), then verify audio, subtitles and the transition
+  back to gameplay at the higher rate.
+- **Frame-rate choices from the launcher.** Verify what each choice really sets: a capped 60 has
+  been seen running at 30, the patched 60 works as intended, and the patched 90 shows about 80.
+  Check the cap against `BB_FPS_LIMIT`, `BB_FPS` and `FPS_PRESETS` (`scripts/patches.py`),
+  `BB_VBLANK_HZ` and the present-thread limiter, then confirm each with the in-game counter at a
+  fixed spot.
 
 ## In 1.7, to confirm in play
 

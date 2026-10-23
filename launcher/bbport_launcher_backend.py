@@ -48,6 +48,8 @@ EFFECT_HINTS = {
     'effect_game_aa': "The game's own edge smoothing, under the upscaler. Look only.",
     'effect_dynamic_shadows': 'Shadows cast by lamps, torches and other moving lights. Costs GPU time.',
     'effect_ssr': 'Reflections on wet streets; not in the original game. Costs GPU time.',
+    'facegen': 'Off applies Kyo\'s patch: stops the face and eye vertex explosions, but face '
+               'customization is unavailable.',
 }
 
 FIELDS = {
@@ -139,7 +141,8 @@ FIELDS = {
     'Advanced': [
         row('ui_language', 'Launcher language', 'choice', [('', ('System default',))] + core.UI_LANGUAGES),
         row('draw_pipe', 'Draw pipeline', 'choice', core.DRAW_PIPE),
-        row('readbacks', 'GPU readbacks', 'choice', core.READBACKS),
+        row('readbacks', 'GPU readbacks', 'choice', core.READBACKS,
+            'Precise waits for the GPU on every read: slower. Relaxed is enough with Facegen off.'),
         row('precompile_shaders', 'Precompile shaders before launch', 'toggle'),
         row('discord_rpc', 'Discord Rich Presence', 'toggle'),
         row('extra_env', 'Extra environment variables'),

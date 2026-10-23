@@ -153,6 +153,7 @@ EFFECTS = [
     ("skip_intro", "Пропуск заставок при запуске", False),
     ("debug_camera", "Свободная камера (Cross + L3 / Space + Z)", False),
     ("debug_menu", "Debug menu (левый touchpad / Tab; нужны шрифты)", False),
+    ("facegen", "Facegen (лица и глаза)", True),
 ]
 
 # PC enhancements (scripts/enhancements.py): game files made at start; off is original game.

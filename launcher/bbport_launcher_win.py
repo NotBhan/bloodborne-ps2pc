@@ -91,8 +91,8 @@ def configure_renderer(environ=None, wine=None):
 
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This fork's build; the release tag includes this version.
-VERSION = '1.10.8'
-CURRENT_RELEASE_TAG = 'v1.10.8'
+VERSION = '1.10.9'
+CURRENT_RELEASE_TAG = 'v1.10.9'
 HERO_ART = PORT_DIR / 'launcher' / 'art' / 'hero.png'
 STRIP_ART = PORT_DIR / 'launcher' / 'art' / 'strip.png'
 # Co-op: the community server that answers the game's own server requests.
@@ -222,6 +222,7 @@ EFFECTS = [
     ('effect_game_aa', ("The game's own anti-aliasing", 'Собственное сглаживание игры'), True),
     ('effect_dynamic_shadows', ('Shadows of dynamic lights', 'Тени от динамических источников'), True),
     ('effect_ssr', ('Screen-space reflections (not in the original)', 'Отражения SSR (не было в игре)'), False),
+    ('facegen', ('Facegen (faces and eyes)', 'Facegen (лица и глаза)'), True),
 ]
 EXTRAS = [
     ('skip_intro', ('Skip the intro logos and movie', 'Пропуск заставок при запуске'), False),

@@ -199,6 +199,9 @@ EN = {
     "Пропуск заставок при запуске": "Skip the intro videos",
     "Свободная камера (Cross + L3 / Space + Z)": "Free camera (Cross + L3 / Space + Z)",
     "Debug menu (левый touchpad / Tab; нужны шрифты)": "Debug menu (left touchpad / Tab; needs fonts)",
+    "Facegen (лица и глаза)": "Facegen (faces and eyes)",
+    "Выключите при «взрывах» лиц и глаз (патч Kyo); настройка лица недоступна":
+        "Turn off if faces or eyes explode (Kyo's patch); face customization is unavailable",
     "Установите DbgFont14h.ccm и DbgFont14h.tpf в dvdroot_ps4/font из мода Nexus #253":
         "Install DbgFont14h.ccm and DbgFont14h.tpf into dvdroot_ps4/font from Nexus mod #253",
     # Enhancements

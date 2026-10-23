@@ -27,42 +27,38 @@ settings keys, and preparation scripts.
 
 ## Download
 
-Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.8/bbport-windows.zip)**
-from the [1.10.8 release](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.8)
+Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.9/bbport-windows.zip)**
+from the [1.10.9 release](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.9)
 and extract the whole archive. The archive contains the frozen launcher (`Bloodborne.exe`),
 `bin/bb-probe.exe`, the preparation scripts, shader catalog and the runtime DLLs; no Python
 install is required. The source archives on the release page are for developers. It contains
 no game files.
 
 The same release page also carries the Linux bundle
-([`bbport-linux-x86_64.tar.gz`](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.8/bbport-linux-x86_64.tar.gz)).
+([`bbport-linux-x86_64.tar.gz`](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.9/bbport-linux-x86_64.tar.gz)).
 See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 [changelog](docs/CHANGELOG.md).
 
-## What's new in 1.10.8
+## What's new in 1.10.9
 
-- **Linux parity shell.** The launcher now uses the same three destinations as the Linux
-  launcher — **Game Details**, **Trophies** and **Settings** — over full-bleed key art.
-  Settings is a full-width category list that opens one category at a time, with the
-  upscaling preset beside the upscaler.
-- **Trophies page.** Local progress, earned/total and grade counts, filter and sort, and
-  separate **Unlocked** and **Locked** sections, read from the game's own trophy cache and
-  unlock history. No placeholder names, fake rarity or invented completion.
-- **Activity and play time.** Game Details shows total play time and only real game activity:
-  sessions and trophy unlocks, never launcher or settings events.
-- **Discord Rich Presence.** Presence is the game name and hunter level, with a
-  **Platinum Trophy Earned** state when the platinum trophy is unlocked. Echoes, Insight,
-  area/boss text and the attribute tooltip are no longer published.
-- **GUI consistency.** Trophy summary and activity rows follow the existing typography and
-  spacing, and long names or descriptions elide instead of expanding the layout.
-- The 1.10.7 trophy details, Discord Rich Presence, shader-precompile controls and the
-  renderer, recorder, motion-vector, cache and shader pre-build fixes remain in this build.
+- **FaceGen fix.** A **Facegen** switch stops the face and eye vertex explosions: off applies
+  Kyo's Disable Facegen patch, at the cost of face customization. Relaxed readbacks plus the
+  patch replace Precise readbacks, which wait for the GPU on every read and lower both CPU and
+  GPU utilisation.
+- **Setup checklist.** The first-run wizard is one page with the game-file, trophy-key and
+  saves checks, their fixes inline and graphics beside them.
+- **Direct launch settings.** Starting the Linux bundle's `run.sh` directly now uses the
+  launcher's saved FPS, readbacks, pipeline and other settings instead of defaults.
+- The 1.10.8 parity shell, trophy details, Discord Rich Presence, shader-precompile controls
+  and the renderer, recorder, motion-vector, cache and shader pre-build fixes remain in this
+  build.
 
 ## Features
 
 **Launcher and setup**
-- A setup wizard on first start that installs the game from your own ZIP or PKG dump, checks
-  the game files, saves and trophy key, and can be reopened from **Settings → Game & Data**.
+- A first-run setup checklist that installs the game from your own ZIP or PKG dump and shows
+  the game-file, trophy-key and saves checks on one page with their fixes inline; reopen it from
+  **Settings → Game & Data**.
 - Three destinations, matching the Linux launcher: **Game Details**, **Trophies** and
   **Settings**. Settings is one full-width category list — Display, Graphics, Upscaling,
   Performance, Compatibility, Controller, Game & Data, Launcher and Diagnostics — with each
@@ -137,18 +133,19 @@ What changed in each release: [docs/CHANGELOG.md](docs/CHANGELOG.md).
 1. Right-click **bbport-windows.zip** and choose **Extract All**. Put the `bbport-windows`
    folder somewhere permanent, such as `C:\Games\Bloodborne\bbport-windows`. Do not run the game
    from inside the zip.
-2. Double-click **Bloodborne.exe**. The setup wizard opens on a new install; **Skip setup** goes
-   straight to the launcher.
-3. In the wizard's **Game files** step, either:
+2. Double-click **Bloodborne.exe**. The setup checklist opens on a new install; **Skip setup**
+   goes straight to the launcher.
+3. In **Game files**, either:
    - click **Install from ZIP / PKG** and choose your dump (for example `cusa-03173.zip`) and a
      destination such as `C:\Games\Bloodborne`. The base game and the plain 1.09 update are
      extracted into `CUSA03173`; allow about 70 GB free for a 30 GB archive. Or
    - click **Choose a game folder** and pick the folder with `eboot.bin` directly inside.
-4. On **Your data**, optionally import your own `keys.json` (for achievement names) or choose an
-   existing saves folder. The checks turn green when the game folder has version 1.09; amber is
-   normal for a new install without saves.
-5. Click **Play**. The first launch prepares files and builds the known shaders
-   (*Preparing shaders: N%* in the window title), so it takes a while; later starts are quick.
+4. Under **Trophy keys** and **Saves**, optionally import your own `keys.json` (for achievement
+   names) or choose an existing saves folder. The checks turn green when the game folder has
+   version 1.09; amber is normal for a new install without saves.
+5. Pick a graphics preset on the same page, then click **Play**. The first launch prepares files
+   and builds the known shaders (*Preparing shaders: N%* in the window title), so it takes a
+   while; later starts are quick.
 
 ![The setup wizard](docs/images/launcher-setup.jpg)
 

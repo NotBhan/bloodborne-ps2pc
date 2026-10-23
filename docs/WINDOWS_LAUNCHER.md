@@ -11,14 +11,15 @@ full-width category list that opens one category at a time. The Windows backend,
 keys, executable, packaging toolchain, and Windows process model remain compatible with the
 existing Windows build.
 
-## Release 1.10.8
+## Release 1.10.9
 
-Download [bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.8/bbport-windows.zip)
-from the [release page](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.8).
-This build brings the Windows launcher to the Linux parity shell with dedicated Game Details,
-Trophies and Settings destinations, play time and a game-only activity feed, and updated
-Discord Rich Presence. The 1.10.7 trophy details, shader-precompile controls and the recorder,
-motion-vector, cache and shader pre-build fixes remain. See [CHANGELOG.md](CHANGELOG.md) and the
+Download [bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.9/bbport-windows.zip)
+from the [release page](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.9).
+This build adds the **Facegen** switch that stops the FaceGen face and eye vertex explosions
+(off applies Kyo's patch at the cost of face customization), warns that Precise readbacks are
+slower, and makes a direct `run.sh` start use the launcher's saved settings. The 1.10.8 parity
+shell, trophy details, shader-precompile controls and the recorder, motion-vector, cache and
+shader pre-build fixes remain. See [CHANGELOG.md](CHANGELOG.md) and the
 [project README](../README.md).
 
 ## Relationship to the Linux launcher
@@ -52,7 +53,7 @@ the renderer, `bbport.ini` settings keys, and preparation scripts.
 | **Game Details** | Full-bleed key art, cover mark, launch state, offline/online/co-op mode, primary Play/Stop action, readiness checks, current graphics summary, total play time, trophy progress and recent game/trophy activity. |
 | **Trophies** | Local progress, earned/total and grade counts, filter and sort, unlocked and locked sections, unlock dates and descriptions. Unavailable data is reported truthfully. |
 | **Settings** | One full-width category list; each category opens on its own with a back breadcrumb. |
-| **Setup** | Four-step first-run wizard: welcome, game files, saves/trophies, graphics/finish. |
+| **Setup** | First-run checklist on one page: game files, trophy keys, saves and graphics, each with its fix inline. Reopen from **Settings → Game & Data**. |
 | **Diagnostics** | A Settings category: process state, last exit code, log line/error/warning counts, runtime report, paths, copy/save/clear log, shader-cache clear, live log with severity colouring and follow mode. |
 
 Settings categories:
