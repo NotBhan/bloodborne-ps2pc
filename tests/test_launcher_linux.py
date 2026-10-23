@@ -1453,8 +1453,8 @@ class CinematicLauncherAndLocalizationTests(unittest.TestCase):
         app.connect("activate", lambda a: None)
         win = launcher.LauncherWindow(app)
 
-        # The shell has exactly three PS5 destinations.
-        self.assertEqual(list(win.pages.keys()), ["details", "trophies", "settings"])
+        # The shell keeps its three PS5 destinations; setup is a first-run page, not a fourth tab.
+        self.assertEqual(list(win.pages.keys()), ["details", "trophies", "settings", "setup"])
         self.assertEqual(list(win.nav_buttons.keys()), ["details", "trophies", "settings"])
         self.assertTrue(hasattr(win, "shell_status_button"))
         win.show_page("trophies")
@@ -1844,6 +1844,64 @@ class CinematicLauncherAndLocalizationTests(unittest.TestCase):
                     cyrillic_leak, [],
                     f"Cyrillic characters detected in {code} mode UI: {cyrillic_leak}"
                 )
+
+
+class SetupPageTests(unittest.TestCase):
+    """The first-run checklist: routing, finish and skip."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        (self.root / "config").mkdir()
+        (self.root / "data").mkdir()
+        self.patches = [
+            patch.object(launcher, "CONFIG_DIR", self.root / "config"),
+            patch.object(launcher, "CONFIG_FILE", self.root / "config" / "settings.json"),
+            patch.object(launcher, "DATA_DIR", self.root / "data"),
+            patch.dict(launcher.DEFAULTS, {"game_dir": str(self.root / "missing")}),
+            patch.dict(os.environ, {"BB_CONFIG": str(self.root / "bbport.ini")}),
+        ]
+        for active in self.patches:
+            active.start()
+
+    def tearDown(self):
+        for active in reversed(self.patches):
+            active.stop()
+        self.temporary.cleanup()
+
+    def make_window(self):
+        app = launcher.Adw.Application(application_id="io.github.bbport.TestSetupPage")
+        app.connect("activate", lambda a: None)
+        return launcher.LauncherWindow(app)
+
+    def test_fresh_install_opens_the_checklist(self):
+        win = self.make_window()
+        self.assertIn("setup", win.pages)
+        self.assertEqual(win.stack.get_visible_child_name(), "setup")
+        self.assertFalse(win.nav_box.get_visible())
+        self.assertFalse(win.setup_play_button.get_sensitive())
+
+    def test_finish_marks_setup_done_and_returns_to_details(self):
+        game = self.root / "game"
+        game.mkdir()
+        (game / "eboot.bin").write_text("x", encoding="utf-8")
+        win = self.make_window()
+        win.settings["game_dir"] = str(game)
+        win.settings["user_dir"] = str(self.root / "saves")
+        win.refresh_setup()
+        self.assertTrue(win.setup_play_button.get_sensitive())
+        with patch.object(win, "store"):
+            win.finish_setup(False)
+        self.assertTrue(win.settings["setupCompleted"])
+        self.assertFalse(win.settings["setupSkipped"])
+        self.assertEqual(win.stack.get_visible_child_name(), "details")
+
+    def test_skip_marks_setup_skipped(self):
+        win = self.make_window()
+        with patch.object(win, "store"):
+            win.skip_setup()
+        self.assertTrue(win.settings["setupSkipped"])
+        self.assertEqual(win.stack.get_visible_child_name(), "details")
 
 
 if __name__ == "__main__":

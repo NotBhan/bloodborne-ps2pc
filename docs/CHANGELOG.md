@@ -5,6 +5,20 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
+## 1.10.9 (2026-10-23)
+
+- **Setup page:** the GTK launcher gains a first-run checklist page. Game files, trophy keys,
+  saves and graphics are visible together, each check shows its own fix inline, and the page
+  hides the three-destination navigation until it is finished or skipped. Reopen it from
+  **Settings → Launcher → Run setup again**. The Windows launcher's four-step wizard is replaced
+  by the same single-page checklist.
+- **Face and eye vertex explosions:** a **Facegen** switch (on by default) applies Kyo's
+  "Disable Facegen" patch when turned off, which stops the FaceGen vertex explosions that
+  distort faces and eyes at the cost of face customization.
+- **Direct `run.sh` starts use the launcher's settings:** FPS mode and cap, readbacks, pipeline,
+  frames ahead, fullscreen, present mode, language and the rest are read from `settings.json`
+  when they are not already in the environment, instead of falling back to defaults.
+
 ## 1.10.8 (2026-10-23)
 
 - **Trophies:** the launcher groups the list into **Unlocked** and **Locked** sections. It

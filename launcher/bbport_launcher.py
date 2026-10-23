@@ -51,6 +51,7 @@ from bbport_assets import (
 from bbport_activity import add_playtime, load_events, load_playtime, record_event
 from bbport_i18n import language, set_language, tr
 from bbport_readiness import check_readiness, import_trophy_key, valid_trophy_key
+import bbport_startup as startup
 from bbport_trophies import GRADE_ORDER, GRADES, load_trophy_report
 
 import gi
@@ -84,7 +85,7 @@ DATA_DIR = Path(os.environ.get("BB_DATA_DIR", PORT_DIR))
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "bbport-launcher"
 CONFIG_FILE = CONFIG_DIR / "settings.json"
 MAX_LOG_LINES = 5000
-VERSION = "1.10.8"
+VERSION = "1.10.9"
 REPO_URL = "https://github.com/NotBhan/bloodborne-ps2pc"
 ISSUES_URL = f"{REPO_URL}/issues"
 THEME_FILE = LAUNCHER_DIR / "theme.css"
@@ -292,6 +293,7 @@ EFFECTS = [
     ("skip_intro", "Пропуск заставок при запуске", False),
     ("debug_camera", "Свободная камера (Cross + L3 / Space + Z)", False),
     ("debug_menu", "Debug menu (левый touchpad / Tab; нужны шрифты)", False),
+    ("facegen", "Facegen (лица и глаза)", True),
 ]
 
 # PC enhancements (scripts/enhancements.py): game files made at start; off is original game.
@@ -700,6 +702,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.add_css_class("bbport-window")
         install_theme()
         self.settings = load_settings()
+        self.migrate_setup()
         set_language(self.settings.get("ui_language") or "en")
         self.ini, self.ini_lines = load_ini()
         self.process = None
@@ -748,6 +751,7 @@ class LauncherWindow(Adw.ApplicationWindow):
 
         nav = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=26)
         nav.add_css_class("ps5-nav")
+        self.nav_box = nav
         self.nav_buttons = {}
         for key, label in (("details", tr("Game Details")),
                            ("trophies", tr("Trophies")),
@@ -790,6 +794,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             "details": self.build_details_page(),
             "trophies": self.build_trophies_page(),
             "settings": self.build_settings_shell(),
+            "setup": self.build_setup_page(),
         }
         for key, page in self.pages.items():
             self.stack.add_named(page, key)
@@ -809,6 +814,9 @@ class LauncherWindow(Adw.ApplicationWindow):
                 self.show_settings_category(self.settings_category)
             else:
                 self.show_settings_menu()
+        if (startup.setup_pending(self.settings) and not requested_page
+                and not requested_category):
+            self.stack.set_visible_child_name("setup")
         self.on_page_changed(self.stack, None)
         self.set_reduce_motion(bool(self.settings.get("reduce_motion", False)))
         self.refresh_log_view()
@@ -839,8 +847,141 @@ class LauncherWindow(Adw.ApplicationWindow):
             self.settings_category_title.set_text(
                 self.settings_category_labels.get(category, category))
 
+    def migrate_setup(self):
+        """An existing install with a working game folder has finished setup; a fresh one has not."""
+        if "setupCompleted" in self.settings or "setupSkipped" in self.settings:
+            return
+        if startup.game_ok(self.settings):
+            self.settings["setupCompleted"] = True
+        self.settings["setupVersion"] = startup.SETUP_VERSION
+
+    def build_setup_page(self):
+        """One checklist page: the three checks, their fixes, graphics and the first-launch actions."""
+        page = Adw.PreferencesPage()
+        intro = Adw.PreferencesGroup(
+            title=tr("Set up your hunt"),
+            description=tr("Point the launcher at your own decrypted CUSA03173 dump (1.09), "
+                           "check saves and the optional trophy key, then pick graphics. "
+                           "Everything stays editable in Settings."))
+        page.add(intro)
+
+        checklist = Adw.PreferencesGroup(
+            title=tr("Checklist"),
+            description=tr("Read-only checks; fix anything marked in red before playing."))
+        self.setup_rows = {}
+        self.setup_icons = {}
+        for key in ("Game files", "Trophies", "Saves"):
+            row = Adw.ActionRow(title=tr(key))
+            icon = Gtk.Image.new_from_icon_name("dialog-question-symbolic")
+            icon.set_pixel_size(18)
+            icon.set_valign(Gtk.Align.CENTER)
+            row.add_prefix(icon)
+            self.setup_rows[key] = row
+            self.setup_icons[key] = icon
+            checklist.add(row)
+
+        for title, subtitle, icon_name, tooltip, handler in (
+                (tr("Game folder"), tr("The folder containing eboot.bin."),
+                 "folder-open-symbolic", tr("Choose"), lambda _b: self.on_choose_game(None)),
+                (tr("Trophy keys"), tr("Optional keys.json for trophy names."),
+                 "document-open-symbolic", tr("Import"), lambda _b: self.on_import_trophy_keys(None)),
+                (tr("Saves folder"), tr("Where the game writes savedata."),
+                 "folder-open-symbolic", tr("Choose"), lambda _b: self.on_choose_user(None)),
+                (tr("Check again"), tr("Re-run the checks after changing a folder."),
+                 "view-refresh-symbolic", tr("Check"), lambda _b: self.refresh_setup())):
+            row = Adw.ActionRow(title=title, subtitle=subtitle)
+            row.add_suffix(flat_button(icon_name, tooltip, handler))
+            checklist.add(row)
+        page.add(checklist)
+
+        graphics = Adw.PreferencesGroup(
+            title=tr("Graphics"),
+            description=tr("Output, upscaler and effects; change them at any time in Settings."))
+        summary = (f"{self.ini.get('output_res', '1920x1080')} · "
+                   f"{self.ini.get('upscaler', 'dlss').upper()}")
+        graphics_row = Adw.ActionRow(title=tr("Graphics settings"), subtitle=summary)
+        graphics_row.add_suffix(flat_button("applications-graphics-symbolic", tr("Open"),
+                                            lambda _b: self.show_settings_category("graphics")))
+        graphics.add(graphics_row)
+        page.add(graphics)
+
+        footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        footer.add_css_class("ps5-setup-actions")
+        footer.set_margin_start(24)
+        footer.set_margin_end(24)
+        footer.set_margin_top(6)
+        footer.set_margin_bottom(14)
+        skip = Gtk.Button(label=tr("Skip setup"))
+        skip.add_css_class("ps5-secondary-action")
+        skip.connect("clicked", lambda _b: self.skip_setup())
+        footer.append(skip)
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        footer.append(spacer)
+        self.setup_play_button = Gtk.Button(label=tr("Play"))
+        self.setup_play_button.add_css_class("suggested-action")
+        self.setup_play_button.connect("clicked", lambda _b: self.finish_setup(True))
+        footer.append(self.setup_play_button)
+        open_button = Gtk.Button(label=tr("Open launcher"))
+        open_button.connect("clicked", lambda _b: self.finish_setup(False))
+        footer.append(open_button)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        page.set_vexpand(True)
+        box.append(page)
+        box.append(footer)
+        self.refresh_setup()
+        return box
+
+    def refresh_setup(self):
+        if not hasattr(self, "setup_rows"):
+            return
+        game = self.settings.get("game_dir") or None
+        try:
+            checks = check_readiness(game, self.user_dir(), game_info)
+        except (OSError, ValueError):
+            checks = []
+        by_label = {item.get("label"): item for item in checks}
+        icons = {"ready": "emblem-ok-symbolic", "error": "dialog-error-symbolic"}
+        for label, row in self.setup_rows.items():
+            item = by_label.get(label, {})
+            level = item.get("level", "warning")
+            row.set_subtitle(item.get("detail") or tr("Not checked"))
+            self.setup_icons[label].set_from_icon_name(icons.get(level, "dialog-warning-symbolic"))
+        ready = self.launch_is_ready() and startup.writable(self.user_dir())
+        if hasattr(self, "setup_play_button"):
+            self.setup_play_button.set_sensitive(bool(ready) and not self.process)
+
+    def open_setup(self):
+        self.refresh_setup()
+        self.show_page("setup")
+
+    def finish_setup(self, play):
+        if not (self.launch_is_ready() and startup.writable(self.user_dir())):
+            self.skip_setup()
+            return
+        self.settings["setupCompleted"] = True
+        self.settings["setupSkipped"] = False
+        self.settings["setupVersion"] = startup.SETUP_VERSION
+        self.store()
+        self.show_page("details")
+        if play:
+            self.on_launch(None)
+
+    def skip_setup(self):
+        self.settings["setupSkipped"] = True
+        self.settings["setupCompleted"] = False
+        self.settings["setupVersion"] = startup.SETUP_VERSION
+        self.store()
+        self.show_page("details")
+
     def on_page_changed(self, _stack, _param):
         visible = self.stack.get_visible_child_name()
+        setup_visible = visible == "setup"
+        if hasattr(self, "nav_box"):
+            self.nav_box.set_visible(not setup_visible)
+        if hasattr(self, "shell_status_button"):
+            self.shell_status_button.set_visible(not setup_visible)
         for key, button in getattr(self, "nav_buttons", {}).items():
             button.remove_css_class("active")
             if key == visible:
@@ -852,6 +993,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         elif visible == "settings" and hasattr(self, "settings_view_stack"):
             if not getattr(self, "settings_category", ""):
                 self.settings_view_stack.set_visible_child_name("menu")
+        elif visible == "setup":
+            self.refresh_setup()
 
     def update_shell_status(self):
         if not hasattr(self, "shell_status_label"):
@@ -1905,6 +2048,14 @@ class LauncherWindow(Adw.ApplicationWindow):
         page.add(interface)
         page.add(integrations)
 
+        setup_group = Adw.PreferencesGroup(title=tr("Setup"))
+        setup_row = Adw.ActionRow(title=tr("Run setup again"),
+                                  subtitle=tr("Recheck game files, saves and trophy keys."))
+        setup_row.add_suffix(flat_button("view-refresh-symbolic", tr("Open"),
+                                         lambda _b: self.open_setup()))
+        setup_group.add(setup_row)
+        page.add(setup_group)
+
         storage = Adw.PreferencesGroup(title=tr("Storage and version"))
         cfg_row = Adw.ActionRow(title=tr("Configuration directory"), subtitle=str(CONFIG_DIR))
         cfg_row.set_subtitle_lines(1)
@@ -2180,6 +2331,9 @@ class LauncherWindow(Adw.ApplicationWindow):
             if key == "debug_menu":
                 row.set_subtitle(tr("Установите DbgFont14h.ccm и DbgFont14h.tpf в dvdroot_ps4/font "
                                     "из мода Nexus #253"))
+            elif key == "facegen":
+                row.set_subtitle(tr("Выключите при «взрывах» лиц и глаз (патч Kyo); "
+                                    "настройка лица недоступна"))
             self.effect_rows[key] = row
             quality.add(row)
         page.add(quality)
@@ -2193,8 +2347,11 @@ class LauncherWindow(Adw.ApplicationWindow):
             tr("Быстрее на 20–30%; при нестабильности выключите"), DRAW_PIPE,
             self.settings["draw_pipe"])
         compat.add(self.pipe_row)
-        self.readbacks_row = combo_row(tr("Чтение данных GPU процессором"), None, READBACKS,
-                                       self.settings["readbacks"])
+        self.readbacks_row = combo_row(
+            tr("Чтение данных GPU процессором"),
+            tr("Precise ждёт GPU на каждом чтении — медленнее; Relaxed достаточно при "
+               "выключенном Facegen"),
+            READBACKS, self.settings["readbacks"])
         compat.add(self.readbacks_row)
         self.frames_ahead_row = Adw.SpinRow.new_with_range(0, 8, 1)
         self.frames_ahead_row.set_title(tr("Кадров вперёд (конвейер GPU)"))
@@ -2220,7 +2377,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.limit_row = Adw.SpinRow.new_with_range(0, 480, 1)
         self.limit_row.set_title(tr("Ограничение FPS"))
         self.limit_row.set_subtitle(tr("0 — по частоте экрана (не выше 120 Гц); "
-                                       "укажите число, чтобы ограничить иначе"))
+                                       "режим 30 (как на PS4) остаётся 30 при любом ограничении"))
         self.limit_row.set_value(self.settings["fps_limit"])
         perf.add(self.limit_row)
 
@@ -2804,6 +2961,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             self.settings["game_dir"] = path
             self.store()
             self.refresh_details()
+            self.refresh_setup()
             self.record_activity("game", tr("Game folder selected"))
         self.choose_folder(tr("Папка игры (с eboot.bin)"), self.game_dir(), chosen)
 
@@ -2827,6 +2985,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             self.update_user_status()
             self.refresh_trophy_status()
             self.refresh_trophies()
+            self.refresh_setup()
             self.store()
         self.choose_folder(tr("Папка сохранений"), self.user_dir(), chosen)
 
@@ -2864,6 +3023,7 @@ class LauncherWindow(Adw.ApplicationWindow):
                 return
             self.refresh_trophy_status()
             self.refresh_trophies()
+            self.refresh_setup()
             self.record_activity("settings", tr("Trophy keys imported"))
             self.toasts.add_toast(Adw.Toast(
                 title=tr("Ключи трофеев установлены. Имена появятся после запуска игры.")))

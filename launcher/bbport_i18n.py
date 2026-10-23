@@ -199,6 +199,13 @@ EN = {
     "Пропуск заставок при запуске": "Skip the intro videos",
     "Свободная камера (Cross + L3 / Space + Z)": "Free camera (Cross + L3 / Space + Z)",
     "Debug menu (левый touchpad / Tab; нужны шрифты)": "Debug menu (left touchpad / Tab; needs fonts)",
+    "Facegen (лица и глаза)": "Facegen (faces and eyes)",
+    "Precise ждёт GPU на каждом чтении — медленнее; Relaxed достаточно при выключенном Facegen":
+        "Precise waits for the GPU on every read — slower; Relaxed is enough with Facegen off",
+    "0 — по частоте экрана (не выше 120 Гц); режим 30 (как на PS4) остаётся 30 при любом ограничении":
+        "0 uses the display rate (at most 120 Hz); the 30 (PS4) mode stays 30 whatever the limit",
+    "Выключите при «взрывах» лиц и глаз (патч Kyo); настройка лица недоступна":
+        "Turn off if faces or eyes explode (Kyo's patch); face customization is unavailable",
     "Установите DbgFont14h.ccm и DbgFont14h.tpf в dvdroot_ps4/font из мода Nexus #253":
         "Install DbgFont14h.ccm and DbgFont14h.tpf into dvdroot_ps4/font from Nexus mod #253",
     # Enhancements

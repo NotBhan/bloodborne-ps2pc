@@ -231,6 +231,13 @@ class EffectPatchTests(unittest.TestCase):
                      'Disable Chromatic Aberration'):
             self.assertNotIn(name, names)
 
+    def test_facegen_off_selects_the_disable_facegen_patch(self):
+        self.assertEqual(effect_patches({'facegen': '0'}), ['Disable Facegen'])
+        self.assertEqual(effect_patches({'facegen': '1'}), [])
+        self.assertEqual(compile_patches(XML, ['Disable Facegen'], '01.09', SEGMENTS),
+                         [(0x020A63ED - EBOOT_BASE, bytes.fromhex('90E91D030000')),
+                          (0x01C49F26 - EBOOT_BASE, b'\x00')])
+
 
 class DebugPatchTests(unittest.TestCase):
     def test_camera_patch_is_optional_and_compatible_with_fps_and_debug_menu(self):
@@ -477,3 +484,10 @@ class EffectPatchTests(unittest.TestCase):
                      'Disable Motion Blur (perf increase)', 'Disable AA', 'Disable DoF',
                      'Disable Chromatic Aberration'):
             self.assertNotIn(name, names)
+
+    def test_facegen_off_selects_the_disable_facegen_patch(self):
+        self.assertEqual(effect_patches({'facegen': '0'}), ['Disable Facegen'])
+        self.assertEqual(effect_patches({'facegen': '1'}), [])
+        self.assertEqual(compile_patches(XML, ['Disable Facegen'], '01.09', SEGMENTS),
+                         [(0x020A63ED - EBOOT_BASE, bytes.fromhex('90E91D030000')),
+                          (0x01C49F26 - EBOOT_BASE, b'\x00')])

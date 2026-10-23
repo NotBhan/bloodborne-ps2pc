@@ -36,6 +36,14 @@ if [[ -z ${PYTHON:-} ]]; then
     fi
 fi
 if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1; fi
+# The launcher's saved settings (settings.json): a start through run.sh directly uses them too.
+# Values already in the environment (the launcher, a script or the command line) are kept.
+launcher_settings=${XDG_CONFIG_HOME:-${HOME:-}/.config}/bbport-launcher/settings.json
+if [[ -f $launcher_settings ]]; then
+    while IFS= read -r -d '' key && IFS= read -r -d '' value; do
+        [[ -n ${!key:-} ]] || export "$key=$value"
+    done < <("$PYTHON" scripts/launcher_settings.py "$launcher_settings" "$data")
+fi
 # BB_GAME_DIR: the game's folder (eboot.bin, sce_module, ...). Without it, use the game folder
 # saved by the launcher (settings.json), then the folder next to this one.
 if [[ -z ${BB_GAME_DIR:-} ]]; then

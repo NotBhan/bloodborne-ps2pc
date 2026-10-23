@@ -13,9 +13,14 @@ import unittest
 
 class RestartResolutionTests(unittest.TestCase):
     def run_restarts(self, explicit=False, live=False, ini_extra='', caps=None, bare_path=False,
-                     output_res='1280x720', force_patches=False, fps_env=None):
+                     output_res='1280x720', force_patches=False, fps_env=None, settings=None):
         with tempfile.TemporaryDirectory() as directory:
             data = Path(directory)
+            xdg = data / 'xdg'
+            if settings is not None:
+                config_dir = xdg / 'bbport-launcher'
+                config_dir.mkdir(parents=True)
+                (config_dir / 'settings.json').write_text(json.dumps(settings))
             # Preparation is unrelated to this test; allow the real patch compiler to
             # validate writes against a single ELF load segment spanning the game image.
             out = data / 'out'
@@ -35,7 +40,8 @@ class RestartResolutionTests(unittest.TestCase):
             python = data / 'python'
             python.write_text(f'#!{sys.executable}\n' +
                 'import subprocess, sys\n'
-                'if sys.argv[1] in ("scripts/patches.py", "scripts/mods.py", "scripts/hud_layout.py"):\n'
+                'if sys.argv[1] in ("scripts/patches.py", "scripts/mods.py", "scripts/hud_layout.py",\n'
+                '                    "scripts/launcher_settings.py"):\n'
                 '    sys.exit(subprocess.call([sys.executable, *sys.argv[1:]]))\n')
             python.chmod(0o755)
             probe = data / 'probe'
@@ -47,7 +53,9 @@ class RestartResolutionTests(unittest.TestCase):
                 'with (config.parent/"environments").open("a") as f:\n'
                 '    row={key:os.environ.get(key) for key in '
                 '("BB_RENDER_RES", "BB_OUTPUT_RES", "BB_AUTO_RENDER_RES", "BB_UI_RES", '
-                '"BB_FPS", "BB_FPS_LIMIT", "BB_VBLANK_HZ")}\n'
+                '"BB_FPS", "BB_FPS_LIMIT", "BB_VBLANK_HZ", "BB_READBACKS", "BB_DRAW_PIPE", '
+                '"BB_FRAMES_AHEAD", "BB_SHADER_PREBUILD", "BB_DISCORD_RPC", "BB_FULLSCREEN", '
+                '"BB_PRESENT_MODE", "BB_USER_DIR", "BB_LANGUAGE", "MANGOHUD")}\n'
                 '    row["hud_layer"]=(config.parent/"out/hud_layout/dvdroot_ps4").is_dir()\n'
                 '    f.write(json.dumps(row)+"\\n")\n'
                 'if stage<2:\n'
@@ -57,9 +65,13 @@ class RestartResolutionTests(unittest.TestCase):
                 '    os.execlp("bash", "bash", "run.sh")\n')
             probe.chmod(0o755)
             env = dict(os.environ, BB_PREBUILT='1', BB_PROBE=str(probe), PYTHON=str(python),
-                       BB_DATA_DIR=str(data), BB_CONFIG=str(config), BB_GAME_DIR=str(data))
+                       BB_DATA_DIR=str(data), BB_CONFIG=str(config), BB_GAME_DIR=str(data),
+                       XDG_CONFIG_HOME=str(xdg))
             for key in ('BB_RENDER_RES', 'BB_OUTPUT_RES', 'BB_AUTO_RENDER_RES', 'BB_TEST_STAGE',
-                        'BB_FPS', 'BB_FPS_LIMIT', 'BB_VBLANK_HZ'):
+                        'BB_FPS', 'BB_FPS_LIMIT', 'BB_VBLANK_HZ', 'BB_READBACKS', 'BB_DRAW_PIPE',
+                        'BB_FRAMES_AHEAD', 'BB_SHADER_PREBUILD', 'BB_DISCORD_RPC',
+                        'BB_FULLSCREEN', 'BB_PRESENT_MODE', 'BB_USER_DIR', 'BB_LANGUAGE',
+                        'MANGOHUD'):
                 env.pop(key, None)
             if fps_env:
                 env.update(fps_env)
@@ -159,6 +171,35 @@ class RestartResolutionTests(unittest.TestCase):
         # Explicit BB_FPS_LIMIT=0 from CLI/scripts for benchmarks must not be overwritten by ini.
         rows = self.run_restarts(ini_extra='fps_mode=60\nfps_limit=60\n', fps_env={'BB_FPS_LIMIT': '0'})
         self.assertEqual(rows[0]['BB_FPS_LIMIT'], '0')
+
+    def test_launcher_settings_apply_to_a_direct_start(self):
+        rows = self.run_restarts(settings={
+            'fps_mode': '60', 'fps_limit': 75, 'frames_ahead': 3, 'draw_pipe': '0',
+            'readbacks': '2', 'fullscreen': True, 'present_mode': 'Immediate',
+            'precompile_shaders': False, 'discord_rpc': False, 'mangohud': True,
+            'language': '8', 'user_dir': ''})
+        row = rows[0]
+        self.assertEqual(row['BB_FPS'], '60')
+        self.assertEqual(row['BB_FPS_LIMIT'], '75')
+        self.assertEqual(row['BB_VBLANK_HZ'], '60')
+        self.assertEqual(row['BB_FRAMES_AHEAD'], '3')
+        self.assertEqual(row['BB_DRAW_PIPE'], '0')
+        self.assertEqual(row['BB_READBACKS'], '2')
+        self.assertEqual(row['BB_FULLSCREEN'], '1')
+        self.assertEqual(row['BB_PRESENT_MODE'], 'Immediate')
+        self.assertEqual(row['BB_SHADER_PREBUILD'], '0')
+        self.assertEqual(row['BB_DISCORD_RPC'], '0')
+        self.assertEqual(row['BB_LANGUAGE'], '8')
+        self.assertEqual(row['MANGOHUD'], '1')
+        self.assertTrue(row['BB_USER_DIR'].endswith('/user'))
+
+    def test_environment_wins_over_the_launcher_settings(self):
+        rows = self.run_restarts(settings={'fps_mode': '60', 'fps_limit': 75, 'readbacks': '2'},
+                                 fps_env={'BB_FPS': 'uncap', 'BB_READBACKS': '0'})
+        self.assertEqual(rows[0]['BB_FPS'], 'uncap')
+        self.assertEqual(rows[0]['BB_READBACKS'], '0')
+        self.assertEqual(rows[0]['BB_FPS_LIMIT'], '75')  # not set in the environment
+        self.assertEqual(rows[0]['BB_VBLANK_HZ'], '0')
 
 
 class SupervisorRestartTests(unittest.TestCase):
