@@ -91,8 +91,8 @@ def configure_renderer(environ=None, wine=None):
 
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This fork's build; the release tag includes this version.
-VERSION = '1.10.7'
-CURRENT_RELEASE_TAG = 'v1.10.7'
+VERSION = '1.10.8'
+CURRENT_RELEASE_TAG = 'v1.10.8'
 HERO_ART = PORT_DIR / 'launcher' / 'art' / 'hero.png'
 STRIP_ART = PORT_DIR / 'launcher' / 'art' / 'strip.png'
 # Co-op: the community server that answers the game's own server requests.

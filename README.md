@@ -27,34 +27,36 @@ settings keys, and preparation scripts.
 
 ## Download
 
-Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.7/bbport-windows.zip)**
-from the [1.10.7 release](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.7)
+Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.8/bbport-windows.zip)**
+from the [1.10.8 release](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.8)
 and extract the whole archive. The archive contains the frozen launcher (`Bloodborne.exe`),
 `bin/bb-probe.exe`, the preparation scripts, shader catalog and the runtime DLLs; no Python
 install is required. The source archives on the release page are for developers. It contains
 no game files.
 
 The same release page also carries the Linux bundle
-([`bbport-linux-x86_64.tar.gz`](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.7/bbport-linux-x86_64.tar.gz)).
+([`bbport-linux-x86_64.tar.gz`](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.8/bbport-linux-x86_64.tar.gz)).
 See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 [changelog](docs/CHANGELOG.md).
 
-## What's new in 1.10.7
+## What's new in 1.10.8
 
-- **Trophy details and triggers.** Trophy names, descriptions, grades, counts, progress and
-  Gamerscore now come from your own trophy pack and keys. The platinum is granted when every
-  base trophy is unlocked, per-trophy info and unlock state are implemented, and both launchers
-  can import `keys.json`.
-- **Discord Rich Presence.** The bundled companion runs on Windows and Linux, starts with the
-  game when present (launcher toggle), and shows the game name and hunter level. It switches to
-  **Platinum Trophy Earned** when the platinum trophy is unlocked.
-- **Shader precompile controls.** A switch controls the automatic pre-build, and **Precompile
-  shaders now** runs the pipeline warm-up in a short game run that exits by itself. Recorded
-  shaders no longer wait for the first fight or area.
-- **Release update channel.** Update checks and in-app installs use this repository's releases
-  with plain `vX.Y.Z` tags, so an update cannot replace this build with a different package.
-- The renderer, recorder, motion-vector, cache and shader pre-build fixes from 1.9.7 remain in
-  this build.
+- **Linux parity shell.** The launcher now uses the same three destinations as the Linux
+  launcher — **Game Details**, **Trophies** and **Settings** — over full-bleed key art.
+  Settings is a full-width category list that opens one category at a time, with the
+  upscaling preset beside the upscaler.
+- **Trophies page.** Local progress, earned/total and grade counts, filter and sort, and
+  separate **Unlocked** and **Locked** sections, read from the game's own trophy cache and
+  unlock history. No placeholder names, fake rarity or invented completion.
+- **Activity and play time.** Game Details shows total play time and only real game activity:
+  sessions and trophy unlocks, never launcher or settings events.
+- **Discord Rich Presence.** Presence is the game name and hunter level, with a
+  **Platinum Trophy Earned** state when the platinum trophy is unlocked. Echoes, Insight,
+  area/boss text and the attribute tooltip are no longer published.
+- **GUI consistency.** Trophy summary and activity rows follow the existing typography and
+  spacing, and long names or descriptions elide instead of expanding the layout.
+- The 1.10.7 trophy details, Discord Rich Presence, shader-precompile controls and the
+  renderer, recorder, motion-vector, cache and shader pre-build fixes remain in this build.
 
 ## Features
 

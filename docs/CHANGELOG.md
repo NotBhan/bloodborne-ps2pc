@@ -5,7 +5,7 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
-## Unreleased
+## 1.10.8 (2026-10-23)
 
 - **Linux parity shell:** the Windows launcher now uses the same three destinations as Linux —
   **Game Details**, **Trophies** and **Settings** — over full-bleed key art. Settings is a

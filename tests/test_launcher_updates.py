@@ -64,10 +64,10 @@ class ForkReleaseTests(unittest.TestCase):
         self.assertIn('NotBhan/bloodborne-ps2pc', core.RELEASES_PAGE)
 
     def test_release_tags_compare_against_the_installed_tag(self):
-        with patch.object(core, 'CURRENT_RELEASE_TAG', 'v1.10.7'):
+        with patch.object(core, 'CURRENT_RELEASE_TAG', 'v1.10.8'):
+            self.assertFalse(core.release_is_newer('v1.10.8'))
             self.assertFalse(core.release_is_newer('v1.10.7'))
-            self.assertFalse(core.release_is_newer('v1.10.6'))
-            self.assertTrue(core.release_is_newer('v1.10.8'))
+            self.assertTrue(core.release_is_newer('v1.10.9'))
             self.assertTrue(core.release_is_newer('v1.11.0'))
 
 
