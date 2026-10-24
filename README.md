@@ -40,7 +40,8 @@ The objective of this fork is to take the port's barebones Linux launcher and de
 
 2. **Native Linux Experience**:
    - The native GTK4 + libadwaita launcher ([`launcher/bbport_launcher.py`](launcher/bbport_launcher.py)) is the primary control surface on Linux.
-   - Strict XDG compliance for configuration (`~/.config/bbport-launcher/settings.json`), user data, and saves (`~/.local/share/bbport/user/`).
+   - Strict XDG compliance for configuration (`~/.config/bbport-launcher/`), with saves in `user/` inside the game folder by default so launcher updates keep them.
+   - Graphics presets (Low, Medium, High, Ultra) in **Settings → Graphics**, and automatic/manual update checks with one-click installation from **Settings → Launcher → Updates**. Saves, settings, trophy keys and mods are preserved across updates.
    - Single-command desktop entry installation (`launcher/bbport_launcher.py --install-desktop`) integrating with your Linux application launcher.
 
 3. **Preserved & Verified Internal Resolution Scaling**:
@@ -192,11 +193,16 @@ You can also bypass the GUI launcher and execute the game directly:
 
 ## Configuration & Persistence
 
+Trophy keys imported with **Import keys.json** are kept in
+`~/.config/bbport-launcher/keys.json` and copied into the active saves folder at every start,
+so launcher updates and saves-folder changes do not require importing them again.
+
 Configuration is strictly divided between user environment preferences and in-engine settings:
 
 1. **Launcher Settings** (`~/.config/bbport-launcher/settings.json`):
    - `game_dir`: Path to extracted `CUSA03173` directory containing `eboot.bin`.
-   - `user_dir`: Saves and trophy folder (defaults to `~/.local/share/bbport/user/`).
+   - `user_dir`: Saves and trophy folder (defaults to `user/` inside the game folder, so a new launcher version keeps them).
+   - `check_updates`: Check this fork's GitHub releases when the launcher opens (default `true`). The manual **Check now** button is under **Settings → Launcher → Updates**.
    - `mods_dir` & `mods_enabled`: Mods directory and toggle.
    - `control_scheme`: `xbox`, `pc` (keyboard/mouse with PCBButtons prompts), or `playstation`.
    - `fps_mode` & `fps_limit`: Uncapped or capped frame limits.

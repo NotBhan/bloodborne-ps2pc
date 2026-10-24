@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd -- "$(dirname -- "$0")"
+# Windows/MSYS2 uses .exe binaries and %APPDATA% for the launcher settings; Linux uses XDG.
+case $(uname -s) in
+MINGW*|MSYS*)
+    exe=.exe
+    launcher_settings=${APPDATA:-$HOME/AppData/Roaming}/bbport-launcher/settings.json
+    if command -v cygpath >/dev/null 2>&1; then
+        launcher_settings=$(cygpath -u "$launcher_settings")
+    fi
+    ;;
+*)
+    exe=
+    launcher_settings=${XDG_CONFIG_HOME:-${HOME:-}/.config}/bbport-launcher/settings.json
+    ;;
+esac
 if [[ ${1:-} == --software ]]; then
     shift
     if [[ -z ${VK_DRIVER_FILES:-} ]]; then
@@ -38,7 +52,6 @@ fi
 if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1; fi
 # The launcher's saved settings (settings.json): a start through run.sh directly uses them too.
 # Values already in the environment (the launcher, a script or the command line) are kept.
-launcher_settings=${XDG_CONFIG_HOME:-${HOME:-}/.config}/bbport-launcher/settings.json
 if [[ -f $launcher_settings ]]; then
     while IFS= read -r -d '' key && IFS= read -r -d '' value; do
         [[ -n ${!key:-} ]] || export "$key=$value"
@@ -50,7 +63,7 @@ if [[ -z ${BB_GAME_DIR:-} ]]; then
     if [[ -f ../CUSA03173/eboot.bin ]]; then
         BB_GAME_DIR=../CUSA03173
     else
-        config=${XDG_CONFIG_HOME:-${HOME:-}/.config}/bbport-launcher/settings.json
+        config=$launcher_settings
         if [[ -f $config ]]; then
             saved=$("$PYTHON" -c 'import json,sys; v=json.load(open(sys.argv[1], encoding="utf-8")).get("game_dir",""); print(v if isinstance(v,str) else "")' "$config" 2>/dev/null || true)
             if [[ -n $saved ]]; then
@@ -249,12 +262,12 @@ if [[ -z ${BB_PREBUILT:-} && -d fsr4_shaders ]] && command -v spirv-cross >/dev/
     bash tools/fsr4_optimize.sh || echo 'FSR 4: optimized post passes not built' >&2
 fi
 if [[ -n ${BB_PREBUILT:-} ]]; then
-    probe=${BB_PROBE:-bin/bb-probe}
+    probe=${BB_PROBE:-bin/bb-probe$exe}
 else
     bash build.sh
-    probe=out/bb-probe
+    probe=out/bb-probe$exe
 fi
-probe_args=("$out/boot-linked.bin" --content-profile "$out/content.bin" --patches "$out/patches.bin" --app0 "$game" --user "${BB_USER_DIR:-$data/user}" --timeout "${BB_TIMEOUT:-0}" "$@")
+probe_args=("$out/boot-linked.bin" --content-profile "$out/content.bin" --patches "$out/patches.bin" --app0 "$game" --user "${BB_USER_DIR:-$original_game/user}" --timeout "${BB_TIMEOUT:-0}" "$@")
 
 # Supervisor loop: monitors probe execution, handles exit code 85 (Restart to Apply)
 consecutive_restarts=0
@@ -263,8 +276,9 @@ min_session_duration=${BB_RESTART_RESET_SECS:-2}
 
 rpc_bin=""
 if [[ ${BB_DISCORD_RPC:-1} != 0 ]]; then
-    for candidate in "companions/Discord Rich Presence/BloodborneRPC" \
-                     "out/companions/Discord Rich Presence/BloodborneRPC"; do
+    rpc_name=BloodborneRPC$exe
+    for candidate in "companions/Discord Rich Presence/$rpc_name" \
+                     "out/companions/Discord Rich Presence/$rpc_name"; do
         if [[ -x $candidate ]]; then rpc_bin=$PWD/$candidate; break; fi
     done
 fi

@@ -66,10 +66,10 @@ class RestartResolutionTests(unittest.TestCase):
             probe.chmod(0o755)
             env = dict(os.environ, BB_PREBUILT='1', BB_PROBE=str(probe), PYTHON=str(python),
                        BB_DATA_DIR=str(data), BB_CONFIG=str(config), BB_GAME_DIR=str(data),
-                       XDG_CONFIG_HOME=str(xdg))
+                       XDG_CONFIG_HOME=str(xdg), BB_DISCORD_RPC='0')
             for key in ('BB_RENDER_RES', 'BB_OUTPUT_RES', 'BB_AUTO_RENDER_RES', 'BB_TEST_STAGE',
                         'BB_FPS', 'BB_FPS_LIMIT', 'BB_VBLANK_HZ', 'BB_READBACKS', 'BB_DRAW_PIPE',
-                        'BB_FRAMES_AHEAD', 'BB_SHADER_PREBUILD', 'BB_DISCORD_RPC',
+                        'BB_FRAMES_AHEAD', 'BB_SHADER_PREBUILD',
                         'BB_FULLSCREEN', 'BB_PRESENT_MODE', 'BB_USER_DIR', 'BB_LANGUAGE',
                         'MANGOHUD'):
                 env.pop(key, None)
@@ -202,6 +202,27 @@ class RestartResolutionTests(unittest.TestCase):
         self.assertEqual(rows[0]['BB_VBLANK_HZ'], '0')
 
 
+class LauncherSettingsBridgeTests(unittest.TestCase):
+    def test_default_saves_are_inside_the_game_folder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            game = root / 'CUSA03173'
+            game.mkdir()
+            (game / 'eboot.bin').touch()
+            data = root / 'data'
+            data.mkdir()
+            settings = root / 'settings.json'
+            settings.write_text(json.dumps({'game_dir': str(game), 'user_dir': ''}),
+                                encoding='utf-8')
+            output = subprocess.run(
+                [sys.executable, str(ROOT / 'scripts/launcher_settings.py'),
+                 str(settings), str(data)], capture_output=True, check=True, timeout=20).stdout
+            parts = output.split(b'\0')
+            pairs = dict(zip(parts[0::2], parts[1::2]))
+            self.assertEqual(pairs[b'BB_GAME_DIR'].decode(), str(game))
+            self.assertEqual(pairs[b'BB_USER_DIR'].decode(), str(game / 'user'))
+
+
 class SupervisorRestartTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -239,6 +260,7 @@ class SupervisorRestartTests(unittest.TestCase):
             BB_DATA_DIR=str(self.data),
             BB_CONFIG=str(self.config),
             BB_GAME_DIR=str(self.data),
+            BB_DISCORD_RPC='0',
         )
         cmd = [shutil.which('bash'), 'run.sh']
         if extra_args:

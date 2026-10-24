@@ -37,9 +37,13 @@ def main(argv):
         return os.path.expanduser(text(value))
 
     game = folder(settings.get('game_dir'))
-    if game and os.path.isfile(os.path.join(game, 'eboot.bin')):
+    game_valid = bool(game and os.path.isfile(os.path.join(game, 'eboot.bin')))
+    if game_valid:
         emit('BB_GAME_DIR', game)
-    emit('BB_USER_DIR', folder(settings.get('user_dir')) or os.path.join(data, 'user'))
+    # Saves stay with the game, matching the launcher's default; the data folder is only a
+    # fallback while no real game folder is configured.
+    default_user = os.path.join(game, 'user') if game_valid else os.path.join(data, 'user')
+    emit('BB_USER_DIR', folder(settings.get('user_dir')) or default_user)
     name = text(settings.get('player_name'))
     if name:
         emit('BB_USER_NAME', name)

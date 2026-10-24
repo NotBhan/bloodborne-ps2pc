@@ -19,6 +19,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
@@ -50,7 +51,7 @@ from bbport_assets import (
 )
 from bbport_activity import add_playtime, load_events, load_playtime, record_event
 from bbport_i18n import language, set_language, tr
-from bbport_readiness import check_readiness, import_trophy_key, valid_trophy_key
+from bbport_readiness import check_readiness, import_trophy_key, sync_trophy_keys, valid_trophy_key
 import bbport_startup as startup
 from bbport_trophies import GRADE_ORDER, GRADES, load_trophy_report
 
@@ -84,11 +85,98 @@ PACKAGED = bool(os.environ.get("BB_PREBUILT"))
 DATA_DIR = Path(os.environ.get("BB_DATA_DIR", PORT_DIR))
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "bbport-launcher"
 CONFIG_FILE = CONFIG_DIR / "settings.json"
+
+
+def trophy_keys_path():
+    """The launcher's canonical keys.json, beside settings. The game reads the copy in the saves
+    folder; this one survives launcher updates and saves-folder changes."""
+    return CONFIG_DIR / "keys.json"
+
+
 MAX_LOG_LINES = 5000
-VERSION = "1.10.10"
+VERSION = "1.10.11"
 REPO_URL = "https://github.com/NotBhan/bloodborne-ps2pc"
 ISSUES_URL = f"{REPO_URL}/issues"
+RELEASES_API = "https://api.github.com/repos/NotBhan/bloodborne-ps2pc/releases/latest"
+RELEASES_PAGE = f"{REPO_URL}/releases/latest"
+UPDATE_DIR = Path(tempfile.gettempdir()) / "bbport-update"
+UPDATE_CACHE = CONFIG_DIR / "update-check.json"
+# Top-level files a launcher update must never replace: the player's data and generated files.
+UPDATE_KEEP = ("user", "out", "mods", "bbport.ini", "mods.json", "patches.json", "last_run.log")
 THEME_FILE = LAUNCHER_DIR / "theme.css"
+
+
+def version_tuple(text):
+    return tuple(int(number) for number in re.findall(r"\d+", text or ""))
+
+
+def release_is_newer(tag):
+    return version_tuple(tag) > version_tuple(VERSION)
+
+
+def latest_release():
+    """(tag, tar.gz URL, release page) of the newest GitHub release, cached for the UI."""
+    request = urllib.request.Request(RELEASES_API, headers={
+        "Accept": "application/vnd.github+json", "User-Agent": "bbport-launcher"})
+    with urllib.request.urlopen(request, timeout=20) as response:
+        release = json.load(response)
+    tag = release.get("tag_name") or ""
+    asset = next((item.get("browser_download_url") for item in release.get("assets", [])
+                  if item.get("name", "").lower().endswith(".tar.gz")), None)
+    page = release.get("html_url") or RELEASES_PAGE
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        UPDATE_CACHE.write_text(json.dumps({
+            "checked": time.time(), "version": tag, "url": asset, "page": page,
+        }), encoding="utf-8")
+    except OSError:
+        pass
+    return tag, asset, page
+
+
+def remembered_update():
+    """The last GitHub answer, when it is newer than this launcher."""
+    try:
+        cached = json.loads(UPDATE_CACHE.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    version = cached.get("version") if isinstance(cached, dict) else None
+    if not isinstance(version, str) or not release_is_newer(version):
+        return None
+    return version, cached.get("url") or None, cached.get("page") or RELEASES_PAGE
+
+
+def install_update_script():
+    """The detached helper that replaces this launcher once it has closed."""
+    return f'''#!{sys.executable}
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import time
+
+source, target, pid, restart = (Path(sys.argv[1]), Path(sys.argv[2]),
+                                int(sys.argv[3]), sys.argv[4])
+while True:
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        break
+    time.sleep(0.2)
+keep = {set(UPDATE_KEEP)!r}
+target.mkdir(parents=True, exist_ok=True)
+for entry in source.iterdir():
+    if entry.name in keep:
+        continue
+    destination = target / entry.name
+    if entry.is_dir():
+        shutil.copytree(entry, destination, dirs_exist_ok=True, symlinks=True)
+    else:
+        shutil.copy2(entry, destination)
+if restart:
+    subprocess.Popen([restart], cwd=target, start_new_session=True)
+'''
 
 
 def activity_path():
@@ -126,6 +214,39 @@ UPSCALERS = [
 PRESETS = [("Native AA", 0), ("Quality (x1.5)", 1), ("Balanced (x1.7)", 2),
            ("Performance (x2)", 3), ("Ultra Performance (x3)", 4)]
 PRESET_SCALES = [1.0, 1.5, 1.7, 2.0, 3.0]
+
+# One-click starting points for the image and frame-rate settings. `preset` is the upscaling
+# preset above; model_lod and the effects are bbport.ini settings; fps_mode is a launcher setting.
+GRAPHICS_PRESETS = {
+    "low": {"preset": "3", "model_lod": "1", "effect_ssao": "0",
+            "effect_dynamic_shadows": "0", "effect_ssr": "0", "fps_mode": "60"},
+    "balanced": {"preset": "2", "model_lod": "0", "effect_ssao": "1",
+                 "effect_dynamic_shadows": "1", "effect_ssr": "0", "fps_mode": "uncap"},
+    "high": {"preset": "1", "model_lod": "0", "effect_ssao": "1",
+             "effect_dynamic_shadows": "1", "effect_ssr": "0", "fps_mode": "uncap"},
+    "ultra": {"preset": "0", "model_lod": "-2", "effect_ssao": "1",
+              "effect_dynamic_shadows": "1", "effect_ssr": "1", "fps_mode": "uncap"},
+}
+GRAPHICS_PRESET_ORDER = ("low", "balanced", "high", "ultra")
+GRAPHICS_PRESET_INFO = {
+    "low": ("Low", "Performance upscaling, lower model detail, no SSAO or dynamic-light "
+                   "shadows, 60 FPS. For integrated graphics and cards under 4 GB."),
+    "balanced": ("Medium", "Balanced upscaling and the game's own detail, unlocked frame rate. "
+                           "The default; for cards with 4-8 GB."),
+    "high": ("High", "Quality upscaling and the game's own detail, unlocked frame rate. "
+                     "For cards with 8-12 GB."),
+    "ultra": ("Ultra", "Native resolution, highest model detail and screen-space reflections, "
+                       "unlocked frame rate. For cards with 12 GB or more."),
+}
+
+
+def graphics_preset_of(ini, settings):
+    """The preset the current settings match, or 'custom'."""
+    for name, values in GRAPHICS_PRESETS.items():
+        if all(str((settings if key in DEFAULTS else ini).get(key, "")) == value
+               for key, value in values.items()):
+            return name
+    return "custom"
 
 # The runtime's bindings (src/input_bindings.c): key_<action>=<SDL key>, <mouse input>.
 # One key and one mouse input per action; "none" leaves an action unbound.
@@ -358,6 +479,7 @@ DEFAULTS = {
     "vk_validation": False,
     "extra_env": "",
     "reduce_motion": False,
+    "check_updates": True,
 }
 
 # bbport.ini keys the launcher edits; the rest of the file is kept.
@@ -377,7 +499,8 @@ INI_DEFAULTS = {
 }
 
 BOOL_SETTINGS = {"mods_enabled", "fullscreen", "hdr", "mangohud", "precompile_shaders",
-                 "discord_rpc", "frame_stats", "gpu_profile", "vk_validation", "reduce_motion"}
+                 "discord_rpc", "frame_stats", "gpu_profile", "vk_validation", "reduce_motion",
+                 "check_updates"}
 STRING_SETTINGS = {"ui_language", "control_scheme", "game_dir", "user_dir", "mods_dir", "patches_dir",
                     "language", "player_name", "dlc_dir", "present_mode", "fps_mode",
                     "draw_pipe", "readbacks", "extra_env"}
@@ -515,6 +638,55 @@ def patches_dir(settings):
     return Path(settings.get("patches_dir") or DATA_DIR / "patches").expanduser()
 
 
+SAVE_DATA_NAMES = ("savedata", "keys.json", "trophies.txt", "trophy_cache")
+
+
+def saves_dir(settings, data_dir=None):
+    """The game's writable user folder: an explicit saves folder, else <game folder>/user, so
+    extracting a new launcher version no longer hides the saves."""
+    folder = settings.get("user_dir")
+    if folder:
+        return Path(folder).expanduser()
+    game = settings.get("game_dir")
+    if game:
+        return Path(game).expanduser() / "user"
+    return Path(data_dir or DATA_DIR) / "user"
+
+
+def migrate_saves(settings, data_dir=None):
+    """Move saves left in the launcher folder by an older version into the game folder once."""
+    if settings.get("user_dir") or not settings.get("game_dir"):
+        return False
+    game = Path(settings["game_dir"]).expanduser()
+    if not (game / "eboot.bin").is_file():
+        return False
+    old = Path(data_dir or DATA_DIR) / "user"
+    new = game / "user"
+    try:
+        if old.resolve() == new.resolve() or not old.is_dir():
+            return False
+    except OSError:
+        return False
+    if not any((old / name).exists() for name in SAVE_DATA_NAMES):
+        return False
+    try:
+        new.parent.mkdir(parents=True, exist_ok=True)
+        if not new.exists():
+            shutil.move(str(old), str(new))
+        else:
+            for entry in old.iterdir():
+                target = new / entry.name
+                if not target.exists():
+                    shutil.move(str(entry), str(target))
+            try:
+                old.rmdir()
+            except OSError:
+                pass
+    except OSError:
+        return False
+    return True
+
+
 def game_info(path):
     """(title, version) from the game's param.sfo, or None when it cannot be read."""
     game = Path(path)
@@ -532,8 +704,7 @@ def game_environment(s):
     """Environment for run.sh from the launcher settings."""
     env = dict(os.environ)
     env["BB_GAME_DIR"] = str(Path(s["game_dir"]).expanduser())
-    env["BB_USER_DIR"] = str(Path(s["user_dir"]).expanduser() if s["user_dir"]
-                             else DATA_DIR / "user")
+    env["BB_USER_DIR"] = str(saves_dir(s))
     if s.get("player_name", "").strip():
         env["BB_USER_NAME"] = s["player_name"].strip()
     if s.get("dlc_dir", "").strip():
@@ -623,6 +794,12 @@ def combo_value(row):
     return row.values[row.get_selected()]
 
 
+def set_combo_value(row, value):
+    values = getattr(row, "values", [])
+    if value in values:
+        row.set_selected(values.index(value))
+
+
 def invalid_utf8(error):
     """Whether `error` is GLib's UTF-8 conversion failure."""
     quark = GLib.convert_error_quark() if hasattr(GLib, "convert_error_quark") else None
@@ -703,6 +880,17 @@ class LauncherWindow(Adw.ApplicationWindow):
         install_theme()
         self.settings = load_settings()
         self.migrate_setup()
+        migrate_saves(self.settings)
+        try:
+            sync_trophy_keys(self.user_dir(), trophy_keys_path())
+        except OSError:
+            pass
+        self._update = remembered_update()
+        self._update_checked = bool(self._update)
+        self._update_checking = False
+        self._update_downloading = False
+        self._update_auto_done = False
+        self._update_error = ""
         set_language(self.settings.get("ui_language") or "en")
         self.ini, self.ini_lines = load_ini()
         self.process = None
@@ -823,6 +1011,10 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.refresh_details()
         self.refresh_trophies()
         self.update_shell_status()
+        self.refresh_update_status()
+        if not self._update_auto_done and self.settings.get("check_updates", True):
+            self._update_auto_done = True
+            GLib.timeout_add(700, self._auto_update_check)
 
     def show_page(self, name):
         if name in getattr(self, "pages", {}):
@@ -2048,6 +2240,33 @@ class LauncherWindow(Adw.ApplicationWindow):
         page.add(interface)
         page.add(integrations)
 
+        updates = Adw.PreferencesGroup(
+            title=tr("Updates"),
+            description=tr("Checks this fork's GitHub releases and installs the latest bundle "
+                           "without touching saves, settings, trophy keys or mods."))
+        self.check_updates_row = Adw.SwitchRow(
+            title=tr("Check for updates when the launcher opens"),
+            subtitle=tr("You can also check by hand below."),
+            active=bool(self.settings.get("check_updates", True)))
+        self.check_updates_row.connect("notify::active", self.on_check_updates)
+        updates.add(self.check_updates_row)
+
+        self.update_row = Adw.ActionRow(title=tr("Launcher update"))
+        self.update_progress = Gtk.ProgressBar(valign=Gtk.Align.CENTER)
+        self.update_progress.set_size_request(110, -1)
+        self.update_progress.set_visible(False)
+        self.update_row.add_suffix(self.update_progress)
+        self.update_check_button = Gtk.Button(label=tr("Check now"), valign=Gtk.Align.CENTER)
+        self.update_check_button.connect("clicked", self.on_check_updates_now)
+        self.update_row.add_suffix(self.update_check_button)
+        self.update_install_button = Gtk.Button(label=tr("Install update"), valign=Gtk.Align.CENTER)
+        self.update_install_button.add_css_class("ps5-button-primary")
+        self.update_install_button.connect("clicked", self.on_install_update)
+        self.update_row.add_suffix(self.update_install_button)
+        updates.add(self.update_row)
+        page.add(updates)
+        self.refresh_update_status()
+
         setup_group = Adw.PreferencesGroup(title=tr("Setup"))
         setup_row = Adw.ActionRow(title=tr("Run setup again"),
                                   subtitle=tr("Recheck game files, saves and trophy keys."))
@@ -2084,6 +2303,171 @@ class LauncherWindow(Adw.ApplicationWindow):
         page.add(about)
         expand_preferences_page(page, max_size=1040, tightening_threshold=860)
         return page
+
+    # --- Updates ---------------------------------------------------------------------------
+
+    def on_check_updates(self, row, _param):
+        self.settings["check_updates"] = bool(row.get_active())
+        save_settings(self.settings)
+        if self.settings["check_updates"] and not self._update_checked:
+            self.check_for_updates(False)
+
+    def on_check_updates_now(self, _button):
+        self.check_for_updates(True)
+
+    def _auto_update_check(self):
+        self.check_for_updates(False)
+        return False
+
+    def check_for_updates(self, manual=False):
+        if self._update_checking or self._update_downloading:
+            return
+        self._update_checking = True
+        self._update_error = ""
+        self.refresh_update_status()
+        if manual:
+            self.toasts.add_toast(Adw.Toast(title=tr("Checking for updates…")))
+
+        def work():
+            result, error = None, None
+            try:
+                result = latest_release()
+            except (OSError, ValueError, KeyError) as failure:
+                error = failure
+            GLib.idle_add(self._update_check_done, result, error, manual)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _update_check_done(self, result, error, manual):
+        self._update_checking = False
+        self._update_checked = True
+        self._update_error = str(error) if error is not None else ""
+        if error is not None:
+            if manual:
+                self.toasts.add_toast(Adw.Toast(
+                    title=tr("Could not check for updates: {}").format(error)))
+        else:
+            version, url, page = result
+            if release_is_newer(version):
+                self._update = (version, url, page)
+                self.toasts.add_toast(Adw.Toast(
+                    title=tr("Version {} is available in Settings → Launcher → Updates.").format(
+                        version)))
+            else:
+                self._update = None
+                if manual:
+                    self.toasts.add_toast(Adw.Toast(
+                        title=tr("You have the latest version ({}).").format(VERSION)))
+        self.refresh_update_status()
+        return False
+
+    def refresh_update_status(self):
+        if not hasattr(self, "update_row"):
+            return
+        if self._update_downloading:
+            subtitle = tr("Downloading and installing version {}…").format(self._update[0])
+        elif self._update_checking:
+            subtitle = tr("Checking GitHub for a new release…")
+        elif self._update:
+            subtitle = tr("Version {} is available.").format(self._update[0])
+        elif self._update_error:
+            subtitle = tr("Could not check for updates. Use Check now to retry.")
+        elif self._update_checked:
+            subtitle = tr("You have the latest version ({}).").format(VERSION)
+        else:
+            subtitle = tr("Not checked yet.")
+        self.update_row.set_subtitle(subtitle)
+        self.update_install_button.set_visible(bool(self._update) and not self._update_downloading)
+        self.update_check_button.set_sensitive(not self._update_checking and not self._update_downloading)
+        self.update_progress.set_visible(self._update_downloading)
+
+    def on_install_update(self, _button):
+        if self._update_downloading:
+            return
+        if not self._update:
+            self.check_for_updates(True)
+            return
+        if self.process:
+            self.toasts.add_toast(Adw.Toast(title=tr("Close the game before updating.")))
+            return
+        version, url, page = self._update
+        if not PACKAGED or not url:
+            Gio.AppInfo.launch_default_for_uri(page or RELEASES_PAGE, None)
+            return
+        dialog = Adw.MessageDialog.new(
+            self, tr("Install version {}?").format(version),
+            tr("The launcher closes, installs the update and opens again. Saves, settings, "
+               "trophy keys and mods are kept."))
+        dialog.add_response("cancel", tr("Cancel"))
+        dialog.add_response("install", tr("Install"))
+        dialog.set_response_appearance("install", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect("response", lambda _dialog, response:
+                       self._install_update_confirmed(version, url) if response == "install" else None)
+        dialog.present()
+
+    def _install_update_confirmed(self, version, url):
+        self._update_downloading = True
+        self.update_progress.set_fraction(0)
+        self.refresh_update_status()
+
+        def progress(fraction):
+            GLib.idle_add(self._set_update_progress, fraction)
+
+        def work():
+            try:
+                shutil.rmtree(UPDATE_DIR, ignore_errors=True)
+                UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+                archive = UPDATE_DIR / "update.tar.gz"
+                request = urllib.request.Request(url, headers={"User-Agent": "bbport-launcher"})
+                with urllib.request.urlopen(request, timeout=120) as response, open(archive, "wb") as out:
+                    total = int(response.headers.get("Content-Length") or 0)
+                    done = 0
+                    while chunk := response.read(1 << 20):
+                        out.write(chunk)
+                        done += len(chunk)
+                        progress(done / total if total else 0)
+                extracted = UPDATE_DIR / "new"
+                extracted.mkdir()
+                with tarfile.open(archive, "r:gz") as package:
+                    try:
+                        package.extractall(extracted, filter="data")
+                    except TypeError:  # Python 3.10/3.11 without extraction filters
+                        package.extractall(extracted)
+                source = next((path.parent for path in extracted.rglob("run.sh")
+                               if (path.parent / "launcher" / "bbport_launcher.py").is_file()), None)
+                if source is None:
+                    raise OSError("the downloaded bundle has no launcher files")
+                script = UPDATE_DIR / "install_update.py"
+                script.write_text(install_update_script(), encoding="utf-8")
+                script.chmod(0o755)
+                restart = PORT_DIR / "play.sh" if (PORT_DIR / "play.sh").is_file() \
+                    else PORT_DIR / "run_launcher.sh"
+                subprocess.Popen(
+                    [sys.executable, str(script), str(source), str(PORT_DIR), str(os.getpid()),
+                     str(restart)], start_new_session=True, stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                GLib.idle_add(self._quit_for_update)
+            except (OSError, ValueError, tarfile.TarError) as error:
+                GLib.idle_add(self._update_install_failed, error)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _set_update_progress(self, fraction):
+        if hasattr(self, "update_progress"):
+            self.update_progress.set_fraction(max(0.0, min(1.0, fraction)))
+        return False
+
+    def _quit_for_update(self):
+        app = self.get_application()
+        if app is not None:
+            app.quit()
+        else:
+            self.close()
+        return False
+
+    def _update_install_failed(self, error):
+        self._update_downloading = False
+        self.refresh_update_status()
+        self.toasts.add_toast(Adw.Toast(title=tr("Update failed: {}").format(error)))
+        return False
 
     def build_diagnostics_page(self):
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -2231,6 +2615,25 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def build_graphics_page(self):
         page = Adw.PreferencesPage()
+
+        # 0. One-click graphics presets
+        self.graphics_preset_group = Adw.PreferencesGroup(
+            title=tr("Graphics presets"),
+            description=tr("Starting points for upscaling, detail, effects and frame rate. "
+                           "Resolution and look stay as you set them."))
+        self.graphics_preset_row = Adw.ActionRow(title=tr("Starting point"))
+        preset_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        preset_box.set_valign(Gtk.Align.CENTER)
+        self.graphics_preset_buttons = {}
+        for name in GRAPHICS_PRESET_ORDER:
+            button = Gtk.ToggleButton(label=tr(GRAPHICS_PRESET_INFO[name][0]))
+            button.add_css_class("ps5-secondary-action")
+            button.connect("clicked", lambda _button, n=name: self.on_graphics_preset(n))
+            self.graphics_preset_buttons[name] = button
+            preset_box.append(button)
+        self.graphics_preset_row.add_suffix(preset_box)
+        self.graphics_preset_group.add(self.graphics_preset_row)
+        page.add(self.graphics_preset_group)
 
         # 1. Rendering and Resolution
         self.render_group = screen = Adw.PreferencesGroup(
@@ -2416,6 +2819,7 @@ class LauncherWindow(Adw.ApplicationWindow):
                                       text=self.settings["extra_env"])
         perf.add(self.extra_row)
         page.add(perf)
+        self.refresh_graphics_presets()
         expand_preferences_page(page, max_size=1150)
         return page
 
@@ -2914,8 +3318,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         return Path(self.settings["game_dir"]).expanduser()
 
     def user_dir(self):
-        return Path(self.settings["user_dir"]).expanduser() if self.settings["user_dir"] \
-            else DATA_DIR / "user"
+        return saves_dir(self.settings)
 
     def dlc_dir(self):
         return Path(self.settings["dlc_dir"]).expanduser() if self.settings["dlc_dir"] \
@@ -2959,7 +3362,16 @@ class LauncherWindow(Adw.ApplicationWindow):
     def on_choose_game(self, _button):
         def chosen(path):
             self.settings["game_dir"] = path
+            if migrate_saves(self.settings):
+                self.settings["user_dir"] = ""
+            try:
+                sync_trophy_keys(self.user_dir(), trophy_keys_path())
+            except OSError:
+                pass
             self.store()
+            self.update_user_status()
+            self.refresh_trophy_status()
+            self.refresh_trophies()
             self.refresh_details()
             self.refresh_setup()
             self.record_activity("game", tr("Game folder selected"))
@@ -2981,7 +3393,15 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def on_choose_user(self, _button):
         def chosen(path):
+            old_user = self.user_dir()
             self.settings["user_dir"] = path
+            try:
+                if not trophy_keys_path().is_file():
+                    sync_trophy_keys(old_user, trophy_keys_path())
+                sync_trophy_keys(Path(path), trophy_keys_path())
+            except OSError as error:
+                self.toasts.add_toast(Adw.Toast(
+                    title=tr("Could not copy the trophy keys: {}").format(error)))
             self.update_user_status()
             self.refresh_trophy_status()
             self.refresh_trophies()
@@ -3016,7 +3436,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             if not path:
                 return
             try:
-                import_trophy_key(path, self.user_dir())
+                import_trophy_key(path, self.user_dir(), trophy_keys_path())
             except (OSError, ValueError) as error:
                 self.toasts.add_toast(Adw.Toast(
                     title=tr("Не удалось установить ключи трофеев: {}").format(error)))
@@ -3031,8 +3451,16 @@ class LauncherWindow(Adw.ApplicationWindow):
         dialog.open(self, None, finish)
 
     def on_reset_user(self, _button):
+        old_user = self.user_dir()
         self.settings["user_dir"] = ""
+        try:
+            if not trophy_keys_path().is_file():
+                sync_trophy_keys(old_user, trophy_keys_path())
+            sync_trophy_keys(self.user_dir(), trophy_keys_path())
+        except OSError:
+            pass
         self.update_user_status()
+        self.refresh_trophy_status()
         self.refresh_trophies()
         self.store()
 
@@ -3285,6 +3713,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         s = self.settings
         if hasattr(self, "reduce_motion_row"):
             s["reduce_motion"] = self.reduce_motion_row.get_active()
+        if hasattr(self, "check_updates_row"):
+            s["check_updates"] = self.check_updates_row.get_active()
         if hasattr(self, "ui_language_row"):
             s["ui_language"] = combo_value(self.ui_language_row)
         if hasattr(self, "language_row"):
@@ -3366,6 +3796,49 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.ini.update(ini_updates)
         save_ini(self.ini, self.ini_lines)
         self.ini, self.ini_lines = load_ini()
+        self.refresh_graphics_presets()
+
+    def refresh_graphics_presets(self):
+        if not hasattr(self, "graphics_preset_buttons"):
+            return
+        current = graphics_preset_of(self.ini, self.settings)
+        for name, button in self.graphics_preset_buttons.items():
+            active = name == current
+            button.set_active(active)
+            if active:
+                button.remove_css_class("ps5-secondary-action")
+                button.add_css_class("ps5-button-primary")
+            else:
+                button.remove_css_class("ps5-button-primary")
+                button.add_css_class("ps5-secondary-action")
+        if current in GRAPHICS_PRESET_INFO:
+            label, description = GRAPHICS_PRESET_INFO[current]
+            self.graphics_preset_row.set_subtitle(f"{tr(label)}: {tr(description)}")
+        else:
+            self.graphics_preset_row.set_subtitle(tr(
+                "Custom: your own mix of upscaling, detail, effects and frame rate."))
+
+    def on_graphics_preset(self, name):
+        values = GRAPHICS_PRESETS.get(name)
+        if values is None:
+            return
+        set_combo_value(self.preset_row, int(values["preset"]))
+        set_combo_value(self.lod_row, values["model_lod"])
+        for key in ("effect_ssao", "effect_dynamic_shadows", "effect_ssr"):
+            row = self.effect_rows.get(key)
+            if row is not None:
+                row.set_active(values[key] == "1")
+        set_combo_value(self.fps_row, values["fps_mode"])
+        try:
+            self.store()
+        except OSError as error:
+            self.toasts.add_toast(Adw.Toast(
+                title=tr("Could not save the graphics preset: {}").format(error)))
+            return
+        self.update_upscaler_status()
+        self.update_shell_status()
+        self.toasts.add_toast(Adw.Toast(
+            title=tr("{} graphics preset applied.").format(tr(GRAPHICS_PRESET_INFO[name][0]))))
 
     def environment(self):
         return game_environment(self.settings)

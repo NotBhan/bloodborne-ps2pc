@@ -1,4 +1,5 @@
 """Headless unit tests for the GTK launcher in launcher/bbport_launcher.py."""
+import io
 import json
 import os
 import shutil
@@ -546,7 +547,7 @@ class GameEnvironmentTests(unittest.TestCase):
         env = launcher.game_environment(self.settings())
         self.assertEqual(env["HOST_ONLY"], "kept")
         self.assertEqual(env["BB_GAME_DIR"], str(self.game))
-        self.assertEqual(env["BB_USER_DIR"], str(self.data / "user"))
+        self.assertEqual(env["BB_USER_DIR"], str(self.game / "user"))
         self.assertEqual(env["BB_MODS_DIR"], str(self.data / "mods"))
         self.assertEqual(env["BB_MODS_CONFIG"], str(self.data / "mods.json"))
         self.assertEqual(env["BB_MODS_ENABLED"], "1")
@@ -1476,10 +1477,12 @@ class CinematicLauncherAndLocalizationTests(unittest.TestCase):
                       "perf_group"):
             self.assertTrue(hasattr(win, group))
 
-        # Removed inert preferences must not exist anymore.
-        for dead in ("start_minimized_row", "close_to_tray_row", "check_updates_row",
+        # Removed inert preferences must not exist anymore; the update controls are real now.
+        for dead in ("start_minimized_row", "close_to_tray_row",
                      "ui_scale_row", "theme_row", "confirm_launch_row"):
             self.assertFalse(hasattr(win, dead), dead)
+        self.assertTrue(hasattr(win, "check_updates_row"))
+        self.assertTrue(hasattr(win, "update_install_button"))
 
         # Settings uses the full PS5 category menu plus drill-down pages.
         expected = ["display", "graphics", "upscaling", "performance", "compatibility",
@@ -1492,6 +1495,24 @@ class CinematicLauncherAndLocalizationTests(unittest.TestCase):
         self.assertEqual(win.settings_category_stack.get_visible_child_name(), "game_data")
         win.show_settings_menu()
         self.assertEqual(win.settings_view_stack.get_visible_child_name(), "menu")
+
+    def test_graphics_preset_updates_the_individual_controls(self):
+        app = launcher.Adw.Application(application_id="io.github.bbport.TestPresets")
+        app.connect("activate", lambda a: None)
+        win = launcher.LauncherWindow(app)
+        self.assertEqual(set(win.graphics_preset_buttons), set(launcher.GRAPHICS_PRESET_ORDER))
+        with patch.object(win, "store"):
+            win.on_graphics_preset("low")
+        self.assertEqual(launcher.combo_value(win.preset_row), 3)
+        self.assertEqual(launcher.combo_value(win.lod_row), "1")
+        self.assertEqual(launcher.combo_value(win.fps_row), "60")
+        self.assertFalse(win.effect_rows["effect_ssao"].get_active())
+        self.assertFalse(win.effect_rows["effect_dynamic_shadows"].get_active())
+        with patch.object(win, "store"):
+            win.on_graphics_preset("ultra")
+        self.assertEqual(launcher.combo_value(win.preset_row), 0)
+        self.assertEqual(launcher.combo_value(win.lod_row), "-2")
+        self.assertTrue(win.effect_rows["effect_ssr"].get_active())
 
     def test_playtime_format_and_live_display(self):
         language = launcher.language()
@@ -1902,6 +1923,158 @@ class SetupPageTests(unittest.TestCase):
             win.skip_setup()
         self.assertTrue(win.settings["setupSkipped"])
         self.assertEqual(win.stack.get_visible_child_name(), "details")
+
+
+class SaveFolderTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.game = self.root / "CUSA03173"
+        self.game.mkdir()
+        (self.game / "eboot.bin").write_text("x", encoding="utf-8")
+        self.data = self.root / "data"
+
+    def test_default_saves_are_inside_the_game_folder(self):
+        settings = dict(launcher.DEFAULTS, game_dir=str(self.game), user_dir="")
+        self.assertEqual(launcher.saves_dir(settings, self.data), self.game / "user")
+
+    def test_explicit_saves_folder_still_wins(self):
+        saves = self.root / "my-saves"
+        settings = dict(launcher.DEFAULTS, game_dir=str(self.game), user_dir=str(saves))
+        self.assertEqual(launcher.saves_dir(settings, self.data), saves)
+
+    def test_old_launcher_saves_move_once(self):
+        old = self.data / "user"
+        (old / "savedata").mkdir(parents=True)
+        (old / "savedata" / "slot").write_text("save", encoding="utf-8")
+        (old / "keys.json").write_text("{}", encoding="utf-8")
+        settings = dict(launcher.DEFAULTS, game_dir=str(self.game), user_dir="")
+        self.assertTrue(launcher.migrate_saves(settings, self.data))
+        self.assertTrue((self.game / "user" / "savedata" / "slot").is_file())
+        self.assertTrue((self.game / "user" / "keys.json").is_file())
+        self.assertFalse(old.exists())
+
+    def test_migration_skips_an_invalid_game_or_explicit_folder(self):
+        old = self.data / "user"
+        old.mkdir(parents=True)
+        (old / "keys.json").write_text("{}", encoding="utf-8")
+        invalid = self.root / "not-a-game"
+        invalid.mkdir()
+        self.assertFalse(launcher.migrate_saves(
+            dict(launcher.DEFAULTS, game_dir=str(invalid), user_dir=""), self.data))
+        self.assertFalse(launcher.migrate_saves(
+            dict(launcher.DEFAULTS, game_dir=str(self.game), user_dir=str(self.root / "saves")),
+            self.data))
+        self.assertTrue(old.is_dir())
+
+
+class GraphicsPresetTests(unittest.TestCase):
+    def test_shipped_defaults_are_medium(self):
+        ini = dict(launcher.INI_DEFAULTS)
+        settings = dict(launcher.DEFAULTS)
+        self.assertEqual(launcher.graphics_preset_of(ini, settings), "balanced")
+        ini["effect_ssr"] = "1"
+        self.assertEqual(launcher.graphics_preset_of(ini, settings), "custom")
+
+    def test_presets_only_name_real_settings(self):
+        for name, values in launcher.GRAPHICS_PRESETS.items():
+            with self.subTest(name=name):
+                self.assertIn(name, launcher.GRAPHICS_PRESET_INFO)
+                for key in values:
+                    self.assertTrue(key in launcher.INI_DEFAULTS or key in launcher.DEFAULTS, key)
+                self.assertIn(int(values["preset"]), [value for _, value in launcher.PRESETS])
+                self.assertIn(values["model_lod"], [value for _, value in launcher.MODEL_LOD])
+                self.assertIn(values["fps_mode"], [value for _, value in launcher.FPS_MODES])
+
+    def test_labels_are_low_medium_high_ultra(self):
+        self.assertEqual([launcher.GRAPHICS_PRESET_INFO[name][0]
+                          for name in launcher.GRAPHICS_PRESET_ORDER],
+                         ["Low", "Medium", "High", "Ultra"])
+
+
+class UpdateCheckTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.cache = self.root / "update-check.json"
+        for name, value in (("CONFIG_DIR", self.root), ("UPDATE_CACHE", self.cache)):
+            patcher = patch.object(launcher, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    @staticmethod
+    def current_tag():
+        return "v" + launcher.VERSION
+
+    @staticmethod
+    def next_tag():
+        numbers = launcher.version_tuple(launcher.VERSION)
+        return "v" + ".".join(map(str, (*numbers[:-1], numbers[-1] + 1)))
+
+    def test_version_comparison(self):
+        self.assertTrue(launcher.release_is_newer(self.next_tag()))
+        self.assertFalse(launcher.release_is_newer(self.current_tag()))
+        self.assertFalse(launcher.release_is_newer("v1.9.99"))
+
+    def test_latest_release_picks_the_linux_bundle(self):
+        tag = self.next_tag()
+        payload = json.dumps({
+            "tag_name": tag,
+            "html_url": "https://example.test/release",
+            "assets": [
+                {"name": "bbport-windows.zip", "browser_download_url": "https://example.test/win.zip"},
+                {"name": "bbport-linux-x86_64.tar.gz",
+                 "browser_download_url": "https://example.test/linux.tar.gz"},
+            ],
+        }).encode()
+
+        class Reply(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        with patch.object(launcher.urllib.request, "urlopen", return_value=Reply(payload)):
+            version, url, page = launcher.latest_release()
+        self.assertEqual(version, tag)
+        self.assertEqual(url, "https://example.test/linux.tar.gz")
+        self.assertEqual(page, "https://example.test/release")
+        cached = json.loads(self.cache.read_text(encoding="utf-8"))
+        self.assertEqual(cached["version"], tag)
+
+    def test_remembered_update_ignores_the_current_release(self):
+        self.cache.write_text(json.dumps({"version": self.current_tag(), "url": "u"}), encoding="utf-8")
+        self.assertIsNone(launcher.remembered_update())
+        self.cache.write_text(json.dumps({"version": self.next_tag(), "url": "u"}), encoding="utf-8")
+        self.assertEqual(launcher.remembered_update()[0], self.next_tag())
+
+    def test_checks_are_on_by_default(self):
+        self.assertTrue(launcher.DEFAULTS["check_updates"])
+        self.assertIn("check_updates", launcher.BOOL_SETTINGS)
+
+    def test_install_helper_updates_code_and_keeps_player_data(self):
+        source, target = self.root / "new", self.root / "old"
+        (source / "launcher").mkdir(parents=True)
+        (source / "launcher" / "bbport_launcher.py").write_text("new", encoding="utf-8")
+        (source / "user").mkdir()
+        (source / "user" / "save").write_text("new", encoding="utf-8")
+        (source / "bbport.ini").write_text("new", encoding="utf-8")
+        (target / "launcher").mkdir(parents=True)
+        (target / "launcher" / "bbport_launcher.py").write_text("old", encoding="utf-8")
+        (target / "user").mkdir()
+        (target / "user" / "save").write_text("mine", encoding="utf-8")
+        (target / "bbport.ini").write_text("mine", encoding="utf-8")
+        script = self.root / "install_update.py"
+        script.write_text(launcher.install_update_script(), encoding="utf-8")
+        subprocess.run([sys.executable, str(script), str(source), str(target),
+                        "999999", ""], check=True, timeout=20)
+        self.assertEqual((target / "launcher" / "bbport_launcher.py").read_text(encoding="utf-8"),
+                         "new")
+        self.assertEqual((target / "user" / "save").read_text(encoding="utf-8"), "mine")
+        self.assertEqual((target / "bbport.ini").read_text(encoding="utf-8"), "mine")
 
 
 if __name__ == "__main__":

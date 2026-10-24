@@ -5,6 +5,19 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
+## 1.10.11 (2026-10-24)
+
+- **Graphics presets in Settings:** **Settings → Graphics → Graphics presets** has Low, Medium,
+  High and Ultra, setting upscaling, model detail, SSAO, dynamic shadows, reflections and
+  frame-rate mode while leaving output resolution and the look settings alone.
+- **Saves and trophy keys stay with the game:** saves now default to `user/` inside the game
+  folder, and the imported `keys.json` is kept in `~/.config/bbport-launcher/keys.json` and
+  copied into the active saves folder. Launcher updates and saves-folder changes no longer
+  require re-importing keys.
+- **Launcher updates:** auto-checks this fork's GitHub releases when the launcher opens, with a
+  manual **Check now** and one-click installation under **Settings → Launcher → Updates**. The
+  detached installer preserves saves, settings, trophy keys and mods and restarts the launcher.
+
 ## 1.10.10 (2026-10-24)
 
 - **Pipeline-cache crash fix:** evicting old pipelines no longer leaves their cached

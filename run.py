@@ -173,29 +173,62 @@ def shader_prebuild(game, out, env):
         env['BB_SHADER_CATALOG'] = str(catalog)
 
 
-def start_companions(data, env, game_pid):
-    """Companions (tools/bloodborne_rpc: Discord Rich Presence): programs in <data>/companions/<name>/
-    that run beside the game, each started only when companions.json lists its folder name under
-    "enabled" (none by default). companion.json names the program; it gets the game's process id
-    in BB_GAME_PID. They end with the game."""
-    started = []
+def companion_folders(data, env):
+    """The companion folders to start: names listed under "enabled" in companions.json plus the
+    built-in Discord Rich Presence folder when BB_DISCORD_RPC is not 0. A package keeps the RPC
+    in companions/; a source checkout builds it into out/companions/."""
+    folders = {}
     try:
         enabled = set(json.loads((data / 'companions.json').read_text(encoding='utf-8')).get('enabled', []))
-    except (OSError, ValueError):
-        return started
+    except (OSError, ValueError, AttributeError, TypeError):
+        enabled = set()
     companions = data / 'companions'
     for folder in sorted(companions.iterdir() if companions.is_dir() else ()):
-        if not folder.is_dir() or folder.name not in enabled:
-            continue
+        if folder.is_dir() and folder.name in enabled:
+            folders[folder.name] = folder
+    if str(env.get('BB_DISCORD_RPC', '1')) != '0':
+        rpc_name = 'BloodborneRPC.exe' if os.name == 'nt' else 'BloodborneRPC'
+        for parent in (companions, PORT / 'out' / 'companions', PORT / 'companions'):
+            folder = parent / 'Discord Rich Presence'
+            if (folder / rpc_name).is_file():
+                folders[folder.name] = folder  # prefer a copy that actually has the program
+                break
+    else:
+        folders.pop('Discord Rich Presence', None)  # the launcher toggle wins
+    return list(folders.values())
+
+
+def companion_program(folder, spec):
+    """The companion executable named by companion.json, with or without Windows' .exe:
+    packages on Linux build `BloodborneRPC`, Windows builds `BloodborneRPC.exe`."""
+    name = str(spec.get('exe') or '')
+    if not name:
+        return None
+    named = folder / name
+    if named.is_file():
+        return named
+    stem = named.stem
+    for candidate in (folder / (stem + '.exe'), folder / stem):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def start_companions(data, env, game_pid):
+    """Programs in <data>/companions/<name>/ that run beside the game: companions.json entries
+    and the built-in Discord Rich Presence. companion.json names the program; it gets the game's
+    process id in BB_GAME_PID. They end with the game."""
+    started = []
+    for folder in companion_folders(data, env):
         try:
             spec = json.loads((folder / 'companion.json').read_text(encoding='utf-8'))
-            exe = folder / spec.get('exe', '')
-            if not exe.is_file() or exe.suffix.lower() != '.exe':
+            exe = companion_program(folder, spec)
+            if exe is None:
                 continue
             print(f'Companion: {spec.get("name", folder.name)}')
             started.append(subprocess.Popen([str(exe)], cwd=folder, env={**env, 'BB_GAME_PID': str(game_pid)},
                                             stdin=subprocess.DEVNULL, creationflags=no_console()))
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, AttributeError, TypeError) as error:
             print(f'Companion {folder.name} not started: {error}', file=sys.stderr)
     return started
 
@@ -420,7 +453,9 @@ def main():
 
         # The in-game restart starts this script again once this process is gone.
         # GPU caches (shaders, pipelines) beside the saves; read before main(), so set here.
-        user_dir = Path(env.get('BB_USER_DIR') or data / 'user').resolve()
+        # Saves live in the game folder, not beside the launcher: a new launcher version is
+        # then a new copy of the program, not a new set of saves.
+        user_dir = Path(env.get('BB_USER_DIR') or original_game / 'user').resolve()
         user_dir.mkdir(parents=True, exist_ok=True)
         env.setdefault('BB_GPU_USER_DIR', str(user_dir))
         if env.get('BB_COOP') == '1':
@@ -450,7 +485,8 @@ def main():
             game_proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, creationflags=no_console())
             started = []
             try:
-                started = start_companions(data, env, game_proc.pid)
+                started = ([] if env.get('BB_PRECOMPILE_ONLY')
+                           else start_companions(data, env, game_proc.pid))
                 status = game_proc.wait()
             finally:
                 for proc in started:

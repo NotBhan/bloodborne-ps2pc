@@ -10,19 +10,9 @@ def valid_trophy_key(value):
     return isinstance(value, str) and re.fullmatch(r'[0-9a-fA-F]{32}', value) is not None
 
 
-def import_trophy_key(source, user_dir):
-    """Writes a valid keys.json into the saves folder the game reads, without a UTF-8 BOM
-    (the game's JSON parser rejects one). Returns its path.
-    ValueError: not a trophy keys file. OSError: reading or writing failed."""
-    text = Path(source).read_text(encoding='utf-8-sig')
-    data = json.loads(text)
-    try:
-        key = data['TrophyKeySet']['ReleaseTrophyKey']
-    except (KeyError, TypeError):
-        raise ValueError('TrophyKeySet.ReleaseTrophyKey is missing')
-    if not valid_trophy_key(key):
-        raise ValueError('ReleaseTrophyKey must be 32 hexadecimal characters')
-    destination = Path(user_dir) / 'keys.json'
+def _write_trophy_key(text, destination):
+    """Writes a validated key file without a UTF-8 BOM (the game's JSON parser rejects one)."""
+    destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.name + '.tmp')
     try:
@@ -34,6 +24,57 @@ def import_trophy_key(source, user_dir):
         except OSError:
             pass
     return destination
+
+
+def _trophy_key_valid(path):
+    try:
+        data = json.loads(Path(path).read_text(encoding='utf-8-sig'))
+        return valid_trophy_key(data['TrophyKeySet']['ReleaseTrophyKey'])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def import_trophy_key(source, user_dir, canonical=None):
+    """Writes a valid keys.json into the saves folder the game reads, without a UTF-8 BOM.
+    When `canonical` is given, the launcher's own copy is updated too, so a later launcher
+    update or save-folder change does not need the file again. Returns the saves-folder path.
+    ValueError: not a trophy keys file. OSError: reading or writing failed."""
+    text = Path(source).read_text(encoding='utf-8-sig')
+    data = json.loads(text)
+    try:
+        key = data['TrophyKeySet']['ReleaseTrophyKey']
+    except (KeyError, TypeError):
+        raise ValueError('TrophyKeySet.ReleaseTrophyKey is missing')
+    if not valid_trophy_key(key):
+        raise ValueError('ReleaseTrophyKey must be 32 hexadecimal characters')
+    destination = _write_trophy_key(text, Path(user_dir) / 'keys.json')
+    if canonical is not None:
+        _write_trophy_key(text, canonical)
+    return destination
+
+
+def sync_trophy_keys(user_dir, canonical):
+    """Keeps the active saves folder and the launcher's canonical key in step.
+
+    A key in the launcher's config folder is copied into the saves folder (the game only reads
+    it there); an existing valid key found only in the saves folder is adopted into the config
+    folder. Returns 'copied', 'adopted' or '' when nothing changed. OSError on I/O failure."""
+    user_key = Path(user_dir) / 'keys.json'
+    canonical = Path(canonical)
+    canonical_valid = _trophy_key_valid(canonical)
+    user_valid = _trophy_key_valid(user_key)
+    if canonical_valid:
+        try:
+            if user_valid and user_key.read_bytes() == canonical.read_bytes():
+                return ''
+        except OSError:
+            pass
+        _write_trophy_key(canonical.read_text(encoding='utf-8-sig'), user_key)
+        return 'copied'
+    if user_valid:
+        _write_trophy_key(user_key.read_text(encoding='utf-8-sig'), canonical)
+        return 'adopted'
+    return ''
 
 
 def _item(label, level, detail):
