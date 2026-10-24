@@ -127,7 +127,13 @@ ApplicationWindow {
             color: "transparent"; radius: 3
             Row {
                 id: statusRow; anchors.centerIn: parent; spacing: 7
-                Rectangle { width: 7; height: 7; radius: 3.5; color: window.stateColor(); anchors.verticalCenter: parent.verticalCenter }
+                StatusDot {
+                    width: 7; height: 7
+                    color: window.stateColor()
+                    busy: launcher.setupRunning || launcher.launchState === "starting"
+                          || launcher.launchState === "preparing"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
                 Text {
                     text: window.stateText(); color: Theme.textDim
                     font.family: Theme.sans; font.pixelSize: 12
@@ -142,41 +148,49 @@ ApplicationWindow {
         y: 58
         width: parent.width; height: parent.height - 58
 
-        DetailsPage {
-            anchors.fill: parent
-            visible: window.page === "Details"
-            gameBlocked: window.gameBlocked
-            savesBlocked: window.savesBlocked
-            onlineBlocked: window.onlineBlocked
-            onPrimaryRequested: window.primaryAction()
-            onOpenTrophies: window.openPage("Trophies")
-            onOpenSettings: (category, section) => window.openSettings(category, section)
+        PageSlot {
+            active: window.page === "Details"
+            DetailsPage {
+                anchors.fill: parent
+                gameBlocked: window.gameBlocked
+                savesBlocked: window.savesBlocked
+                onlineBlocked: window.onlineBlocked
+                onPrimaryRequested: window.primaryAction()
+                onOpenTrophies: window.openPage("Trophies")
+                onOpenSettings: (category, section) => window.openSettings(category, section)
+            }
         }
 
-        TrophiesPage {
-            anchors.fill: parent
-            visible: window.page === "Trophies"
-            onOpenSettings: (category, section) => window.openSettings(category, section)
+        PageSlot {
+            active: window.page === "Trophies"
+            TrophiesPage {
+                anchors.fill: parent
+                onOpenSettings: (category, section) => window.openSettings(category, section)
+            }
         }
 
-        Ps5Settings {
-            id: settings
-            anchors.fill: parent
-            visible: window.page === "Settings"
-            onOpenSetup: (step) => window.openWizard(step)
+        PageSlot {
+            active: window.page === "Settings"
+            Ps5Settings {
+                id: settings
+                anchors.fill: parent
+                onOpenSetup: (step) => window.openWizard(step)
+            }
         }
 
-        Item {
-            anchors.fill: parent
-            visible: window.setupPage
-            Rectangle { anchors.fill: parent; color: Theme.base }
-            SetupWizard {
-                anchors.horizontalCenter: parent.horizontalCenter
-                y: 12
-                width: Math.min(880, parent.width - 56)
-                height: parent.height - 28
-                startStep: window.wizardStep
-                onExitRequested: (target) => window.openPage(target)
+        PageSlot {
+            active: window.setupPage
+            Item {
+                anchors.fill: parent
+                Rectangle { anchors.fill: parent; color: Theme.base }
+                SetupWizard {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: 12
+                    width: Math.min(880, parent.width - 56)
+                    height: parent.height - 28
+                    startStep: window.wizardStep
+                    onExitRequested: (target) => window.openPage(target)
+                }
             }
         }
     }
@@ -195,12 +209,22 @@ ApplicationWindow {
         border.width: 1
         opacity: 0
         visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 120 } }
+        transform: Translate {
+            y: toast.opacity > 0 ? 0 : 14
+            Behavior on y { NumberAnimation { duration: Theme.motionBase; easing.type: Easing.OutCubic } }
+        }
+        Behavior on opacity { NumberAnimation { duration: Theme.motionBase; easing.type: Easing.OutCubic } }
+        Rectangle {
+            width: 2; height: parent.height - 16; radius: 1
+            anchors.left: parent.left; anchors.leftMargin: 7
+            anchors.verticalCenter: parent.verticalCenter
+            color: Theme.accent
+        }
         Text {
             id: toastText
             anchors.left: parent.left; anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: 14; anchors.rightMargin: 14
+            anchors.leftMargin: 16; anchors.rightMargin: 14
             text: ""; color: Theme.text
             font.family: Theme.sans; font.pixelSize: 12; wrapMode: Text.WordWrap
         }
@@ -227,11 +251,19 @@ ApplicationWindow {
         padding: 0
         implicitWidth: Math.max(84, navLabel.implicitWidth + 18)
         implicitHeight: 58
+        scale: tab.down ? 0.98 : 1
+        Behavior on scale { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
         background: Rectangle {
             color: "transparent"
             Rectangle {
                 anchors.bottom: parent.bottom; width: parent.width; height: 2
                 color: tab.active ? Theme.text : "transparent"
+                Behavior on color { ColorAnimation { duration: Theme.motionBase } }
+            }
+            Rectangle {
+                anchors.bottom: parent.bottom; width: parent.width; height: 1
+                color: tab.hovered && !tab.active ? Theme.lineStrong : "transparent"
+                Behavior on color { ColorAnimation { duration: Theme.motionFast } }
             }
             Rectangle {
                 anchors.fill: parent; color: "transparent"
@@ -245,6 +277,7 @@ ApplicationWindow {
             color: tab.active ? Theme.text : (tab.hovered ? Theme.textDim : Theme.textFaint)
             font.family: Theme.sans; font.pixelSize: 14; font.weight: tab.active ? Font.DemiBold : Font.Normal
             horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+            Behavior on color { ColorAnimation { duration: Theme.motionBase } }
         }
         Accessible.role: Accessible.PageTab
         Accessible.name: text

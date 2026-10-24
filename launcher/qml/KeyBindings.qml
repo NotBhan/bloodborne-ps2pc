@@ -50,6 +50,14 @@ Column {
                 delegate: Item {
                     width: root.width
                     height: 46
+                    HoverHandler { id: bindHover }
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Theme.radiusSmall
+                        color: Theme.surfaceHover
+                        opacity: bindHover.hovered ? 0.35 : 0
+                        Behavior on opacity { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
+                    }
                     Text {
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
@@ -118,6 +126,19 @@ Column {
         y: Overlay.overlay ? Math.round((Overlay.overlay.height - height) / 2) : 0
         closePolicy: Popup.NoAutoClose
         padding: 0
+        transformOrigin: Item.Center
+        enter: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionBase; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "scale"; from: 0.97; to: 1; duration: Theme.motionBase; easing.type: Easing.OutCubic }
+            }
+        }
+        exit: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 90 }
+                NumberAnimation { property: "scale"; from: 1; to: 0.98; duration: 90 }
+            }
+        }
         background: Rectangle {
             color: Theme.panel
             border.color: Theme.lineStrong
@@ -213,6 +234,8 @@ Column {
                 text: root.feedback
                 color: Theme.warn
                 font.family: Theme.sans; font.pixelSize: 11
+                opacity: root.feedback !== "" ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: Theme.motionFast } }
             }
             Item { width: 1; height: 10 }
 

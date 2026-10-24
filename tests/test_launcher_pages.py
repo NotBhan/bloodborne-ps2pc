@@ -89,8 +89,9 @@ class LauncherPageTests(unittest.TestCase):
     def test_page_sections_carry_titles_and_hints(self):
         groups = backend.launcher_page_sections('Graphics')
         self.assertEqual(groups[0]['category'], 'Visuals')
-        self.assertEqual(groups[0]['section'], 'Upscaling')
+        self.assertEqual(groups[0]['section'], 'Graphics presets')
         self.assertTrue(groups[0]['hint'])
+        self.assertEqual(groups[1]['section'], 'Upscaling')
 
 
 if __name__ == '__main__':

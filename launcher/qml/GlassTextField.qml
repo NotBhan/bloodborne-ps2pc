@@ -18,8 +18,9 @@ TextField {
     Accessible.role: Accessible.EditableText
     background: Rectangle {
         radius: Theme.radiusSmall
-        color: Theme.surface
+        color: control.activeFocus ? Theme.surfaceActive : Theme.surface
         border.color: control.activeFocus ? Theme.accent : control.hovered ? Theme.lineStrong : Theme.line
         border.width: 1
+        Behavior on color { ColorAnimation { duration: Theme.motionFast } }
     }
 }

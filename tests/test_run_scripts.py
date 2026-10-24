@@ -33,6 +33,19 @@ class RunScriptTests(unittest.TestCase):
         self.assertEqual(stop.exception.code, 3)
         self.assertIsNone(run.run_script('fails.py', capture=True, optional=True))
 
+    def test_companion_program_accepts_linux_and_windows_names(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        folder = Path(temporary.name)
+        spec = {'name': 'Test', 'exe': 'BloodborneRPC.exe'}
+        program = folder / 'BloodborneRPC'
+        program.write_text('', encoding='utf-8')
+        self.assertEqual(run.companion_program(folder, spec), program)
+        program.unlink()
+        windows = folder / 'BloodborneRPC.exe'
+        windows.write_text('', encoding='utf-8')
+        self.assertEqual(run.companion_program(folder, spec), windows)
+
 
 if __name__ == '__main__':
     unittest.main()

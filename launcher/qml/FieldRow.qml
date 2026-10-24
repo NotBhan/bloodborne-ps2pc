@@ -12,6 +12,15 @@ Item {
     implicitHeight: isFolder ? 70 : Math.max(50, labels.implicitHeight + 18)
     height: implicitHeight
 
+    HoverHandler { id: rowHover }
+    Rectangle {
+        anchors.fill: parent
+        radius: Theme.radiusSmall
+        color: Theme.surfaceHover
+        opacity: rowHover.hovered ? 0.35 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
+    }
+
     Column {
         id: labels
         x: 0

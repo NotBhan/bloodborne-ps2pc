@@ -11,15 +11,15 @@ full-width category list that opens one category at a time. The Windows backend,
 keys, executable, packaging toolchain, and Windows process model remain compatible with the
 existing Windows build.
 
-## Release 1.10.10
+## Release 1.10.11
 
-Download [bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.10/bbport-windows.zip)
-from the [release page](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.10).
-This build adds the **Settings → Controller → Key bindings** editor, moves the default saves
-folder into the game folder (with automatic migration from the old launcher folder), and fixes
-the NVIDIA `nvoglv64.dll` crash that followed pipeline-cache eviction. The 1.10.9 Facegen
-switch, setup checklist, parity shell and the renderer, recorder, motion-vector, cache and
-shader pre-build fixes remain. See [CHANGELOG.md](CHANGELOG.md) and the
+Download [bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.11/bbport-windows.zip)
+from the [release page](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.11).
+This build adds Low/Medium/High/Ultra graphics presets, keeps the imported `keys.json` in
+`%APPDATA%\bbport-launcher` and copies it into the active saves folder, and checks this fork's
+releases with one-click installation under **Settings → Launcher → Updates**. The 1.10.10
+key-binding editor, game-folder saves, setup checklist, parity shell and the renderer, recorder,
+motion-vector, cache and shader pre-build fixes remain. See [CHANGELOG.md](CHANGELOG.md) and the
 [project README](../README.md).
 
 ## Relationship to the Linux launcher
@@ -116,6 +116,9 @@ launcher: **Advanced → Import trophy keys…**). The game reads `<saves>/keys.
 the trophy XML from your game's `trophy00.trp`, and shows names, descriptions, grades and
 Gamerscore in **Pause → System → Achievements**. Without a key, the list shows IDs and local
 unlock history only. The launcher's readiness row reports whether the pack and key are valid.
+The imported file is also kept as `%APPDATA%\bbport-launcher\keys.json` and copied into the
+active saves folder at every start, so a launcher update or saves-folder change does not need
+another import.
 
 ![Graphics](images/launcher-graphics.jpg)
 

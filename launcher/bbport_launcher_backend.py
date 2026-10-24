@@ -28,7 +28,7 @@ import bbport_coop as coop
 import bbport_launcher_win as core
 import bbport_startup
 from bbport_pkg_setup import PackageSetupError, install_game
-from bbport_readiness import check_readiness, import_trophy_key, valid_trophy_key
+from bbport_readiness import check_readiness, import_trophy_key, sync_trophy_keys, valid_trophy_key
 
 
 def choice_rows(options):
@@ -159,6 +159,7 @@ FIELDS = {
 # field definitions remain the single source for control types and options.
 SETTINGS_SECTIONS = {
     'Visuals': [
+        ('Graphics presets', []),
         ('Display & frame rate', ['output_res', 'hud_position', 'fullscreen', 'hdr', 'fps_mode', 'frame_cap',
                                   'frames_ahead', 'present_mode']),
         ('Upscaling', ['upscaler', 'preset', 'live_resolution', 'sharpen', 'sharpness',
@@ -230,6 +231,7 @@ SETTING_FIELDS = {field['key']: field for fields in FIELDS.values() for field in
 # the legacy category/section names preserves every action and setting key.
 LAUNCHER_PAGES = {
     'Graphics': [
+        ('Visuals', 'Graphics presets'),
         ('Visuals', 'Upscaling'),
         ('Visuals', 'Frame generation'),
         ('Visuals', 'Image effects'),
@@ -269,6 +271,7 @@ LAUNCHER_PAGES = {
 }
 
 SECTION_HINTS = {
+    ('Visuals', 'Graphics presets'): 'One-click starting points for image quality and frame rate. Output resolution and your look settings stay as chosen.',
     ('Visuals', 'Upscaling'): 'Render scale, provider and sharpening. Changes apply at the next start unless live resolution is on.',
     ('Visuals', 'Frame generation'): "Frames generated between the game's own. The display must be able to show them.",
     ('Visuals', 'Image effects'): 'Game patches for version 1.09; each applies at the next start.',
@@ -306,6 +309,7 @@ LAUNCHER_CATEGORIES = [
          'keys': ['output_res', 'hud_position', 'fullscreen', 'hdr'], 'actions': False},
     ]},
     {'key': 'graphics', 'label': 'Graphics', 'icon': 'graphics', 'groups': [
+        {'category': 'Visuals', 'section': 'Graphics presets'},
         {'category': 'Visuals', 'section': 'Upscaling', 'title': 'Sharpening',
          'keys': ['sharpen', 'sharpness'], 'actions': False, 'hint': ''},
         {'category': 'Visuals', 'section': 'Frame generation'},
@@ -362,6 +366,7 @@ SEARCH_TERMS = {
     'ui_language': 'launcher language', 'mods_enabled': 'load mods',
 }
 SEARCH_ACTIONS = [
+    ('Visuals', 'Graphics presets', 'Low / Medium / High / Ultra graphics preset', 'graphics preset low medium high ultra'),
     ('Controls', 'Button prompts', 'Xbox and PlayStation prompts', 'button controller'),
     ('Controls', 'Key bindings', 'Change keyboard and mouse bindings', 'rebind keys controls'),
     ('Visuals', 'Upscaling', 'Download FSR 4 assets', 'fsr shader'),
@@ -412,6 +417,10 @@ class LauncherBackend(QObject):
         super().__init__()
         self.app = core.load_app_settings()
         core.migrate_saves(self.app)
+        try:
+            sync_trophy_keys(core.saves_dir(self.app), core.trophy_keys_path())
+        except OSError:
+            pass
         for signal in (self.changed, self.coopChanged, self.thdChanged):
             signal.connect(self.playModeChanged)
         self._route = dict(route or LAUNCHER_ROUTE)
@@ -675,6 +684,11 @@ class LauncherBackend(QObject):
     @Property(str, notify=changed)
     def graphicsPreset(self):
         return core.graphics_preset_of(self.ini, self.app)
+
+    @Property('QVariantList', constant=True)
+    def graphicsPresets(self):
+        return [{'key': name, 'label': core.GRAPHICS_PRESET_INFO[name][0]}
+                for name in core.GRAPHICS_PRESETS]
 
     @Property(str, notify=changed)
     def recommendedPreset(self):
@@ -962,6 +976,13 @@ class LauncherBackend(QObject):
         else:
             self.app[key] = value
         self._write()
+        if key == 'game_dir':
+            core.migrate_saves(self.app)
+            try:
+                sync_trophy_keys(core.saves_dir(self.app), core.trophy_keys_path())
+            except OSError:
+                pass
+            self.refreshReadiness()
         if key in ('game_dir', 'user_dir'):
             self._seen_trophy_ids = None
             self.refreshTrophies()
@@ -1242,7 +1263,7 @@ class LauncherBackend(QObject):
                 return
 
         try:
-            import_trophy_key(source, user_dir)
+            import_trophy_key(source, user_dir, core.trophy_keys_path())
         except (OSError, ValueError) as error:
             QMessageBox.warning(None, 'Import failed', str(error))
             return
@@ -1265,18 +1286,22 @@ class LauncherBackend(QObject):
                 self.refresh_addons()
 
     def _carry_trophy_keys(self, old_user, new_user):
-        """The game reads keys.json from the saves folder: one imported before the saves folder
-        was changed (the setup wizard asks for it first) stayed behind, and trophy names were
-        missing. It moves along unless the new folder has its own."""
+        """The launcher keeps the trophy key in its config folder and copies it into whichever
+        saves folder the game uses. An existing key in the old folder is adopted first."""
         source, target = old_user / 'keys.json', new_user / 'keys.json'
-        if source.is_file() and not target.exists() and source.resolve() != target.resolve():
-            try:
-                import_trophy_key(source, new_user)
-            except (OSError, ValueError) as error:
-                self._set_notice(f'Copy keys.json to the new saves folder yourself: {error}')
-                return
-            self._set_notice('Trophy keys copied to the new saves folder.')
-            self.changed.emit()
+        try:
+            if not core.trophy_keys_path().is_file():
+                sync_trophy_keys(old_user, core.trophy_keys_path())
+            if core.trophy_keys_path().is_file():
+                sync_trophy_keys(new_user, core.trophy_keys_path())
+                self._set_notice('Trophy keys copied to the new saves folder.')
+                self.changed.emit()
+            elif source.is_file() and not target.exists():
+                import_trophy_key(source, new_user, core.trophy_keys_path())
+                self._set_notice('Trophy keys copied to the new saves folder.')
+                self.changed.emit()
+        except (OSError, ValueError) as error:
+            self._set_notice(f'Copy keys.json to the new saves folder yourself: {error}')
 
     @Slot(str)
     def openFolder(self, key):

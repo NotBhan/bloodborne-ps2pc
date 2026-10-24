@@ -34,4 +34,10 @@ QtObject {
     readonly property int rowHeight: 54
     readonly property int pageMaxWidth: 1120
     readonly property int pagePadding: 32
+
+    // One motion vocabulary for the whole launcher: quick feedback, normal reveals,
+    // and slower page/dialog movement.
+    readonly property int motionFast: 110
+    readonly property int motionBase: 180
+    readonly property int motionSlow: 280
 }

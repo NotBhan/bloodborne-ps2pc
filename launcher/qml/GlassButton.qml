@@ -18,6 +18,8 @@ Button {
     topPadding: 0
     bottomPadding: 0
     implicitHeight: 34
+    scale: down ? 0.985 : 1
+    Behavior on scale { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
     Accessible.role: Accessible.Button
     Accessible.name: text
     contentItem: Text {
@@ -33,9 +35,10 @@ Button {
         color: button.primary
                ? (!button.enabled ? Theme.accentSoft : button.down ? "#9c2d3a" : button.hovered ? Theme.accentHover : Theme.accent)
                : (!button.enabled ? "transparent" : button.down ? Theme.surfaceActive : button.hovered ? Theme.surfaceHover : "transparent")
-        border.color: button.primary ? (button.enabled ? "transparent" : Theme.line)
-                                     : (button.hovered ? Theme.lineStrong : Theme.line)
-        border.width: 1
-        Behavior on color { ColorAnimation { duration: 90 } }
+        border.color: button.primary
+                      ? (button.activeFocus ? Theme.text : button.enabled ? "transparent" : Theme.line)
+                      : (button.activeFocus ? Theme.accent : button.hovered ? Theme.lineStrong : Theme.line)
+        border.width: button.primary && !button.activeFocus ? 0 : 1
+        Behavior on color { ColorAnimation { duration: Theme.motionFast } }
     }
 }

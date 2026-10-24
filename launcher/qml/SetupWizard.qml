@@ -158,7 +158,7 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         contentWidth: width
         contentHeight: stepColumn.implicitHeight + 24
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.vertical: AppScrollBar {}
 
         Column {
             id: stepColumn

@@ -51,7 +51,7 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         contentWidth: width
         contentHeight: content.implicitHeight + 56
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.vertical: AppScrollBar {}
 
         Column {
             id: content
@@ -140,6 +140,7 @@ Item {
                 Rectangle {
                     width: parent.width * (page.summary.available ? page.summary.completion / 100 : 0)
                     height: parent.height; color: Theme.text
+                    Behavior on width { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
                 }
             }
             Item { width: 1; height: 8 }
@@ -262,6 +263,14 @@ Item {
             width: content.width; height: 66
             color: "transparent"
             opacity: modelData.earned ? 1.0 : 0.78
+            HoverHandler { id: rowHover }
+            Rectangle {
+                anchors.fill: parent
+                radius: Theme.radiusSmall
+                color: Theme.surfaceHover
+                opacity: rowHover.hovered ? 0.45 : 0
+                Behavior on opacity { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
+            }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
 
             Row {

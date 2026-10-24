@@ -19,11 +19,12 @@ Item {
                 text: "SESSION"; color: Theme.textFaint; font.family: Theme.sans
                 font.pixelSize: 10; font.letterSpacing: 1.3
             }
-            Rectangle {
-                width: 7; height: 7; radius: 3.5
+            StatusDot {
+                width: 7; height: 7
                 color: launcher.launchState === "failed" ? Theme.accent :
                        launcher.launchState === "running" ? Theme.good :
                        launcher.launchState === "starting" ? Theme.warn : Theme.textFaint
+                busy: launcher.launchState === "starting" || launcher.launchState === "preparing"
             }
             Text {
                 text: launcher.launchState; color: Theme.text
@@ -158,7 +159,7 @@ Item {
                 clip: true
                 model: launcher.logLines
                 boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: AppScrollBar {}
                 delegate: Text {
                     readonly property bool bad: /error|failed|traceback/i.test(modelData)
                     readonly property bool warning: /warn/i.test(modelData)

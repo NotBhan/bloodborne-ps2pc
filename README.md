@@ -27,32 +27,48 @@ settings keys, and preparation scripts.
 
 ## Download
 
-Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.10/bbport-windows.zip)**
-from the [1.10.10 release](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.10)
+Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.11/bbport-windows.zip)**
+from the [1.10.11 release](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.11)
 and extract the whole archive. The archive contains the frozen launcher (`Bloodborne.exe`),
 `bin/bb-probe.exe`, the preparation scripts, shader catalog and the runtime DLLs; no Python
 install is required. The source archives on the release page are for developers. It contains
 no game files.
 
 The same release page also carries the Linux bundle
-([`bbport-linux-x86_64.tar.gz`](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.10/bbport-linux-x86_64.tar.gz)).
+([`bbport-linux-x86_64.tar.gz`](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.11/bbport-linux-x86_64.tar.gz)).
 See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 [changelog](docs/CHANGELOG.md).
 
-## What's new in 1.10.10
+## Launcher improvements
 
-- **Key bindings in the launcher.** **Settings → Controller → Key bindings** lists every
-  action and captures a key, mouse button or wheel input. Duplicate keys move to the new
-  action, and per-binding or full reset is available; changes apply at the next start.
-- **Saves stay with the game.** The default saves folder is now `user\` inside the game
-  folder rather than next to `Bloodborne.exe`, so launcher updates and new extractions keep
-  the same saves. Saves found in the old launcher folder are moved across automatically.
-- **NVIDIA pipeline-cache crash fixed.** Evicted pipelines no longer leave stale cached
-  descriptor sets under a destroyed layout handle, and eviction waits for submitted GPU work
-  before destroying layouts. This fixes the mid-game `nvoglv64.dll` null read seen after the
-  10-minute pipeline-cache release.
-- The 1.10.9 Facegen switch, setup checklist, parity shell and the renderer, recorder,
-  motion-vector, cache and shader pre-build fixes remain in this build.
+- **Graphics presets are back in Settings.** **Settings → Graphics → Graphics presets** has
+  Low, Medium, High and Ultra buttons, with the suggested preset marked for the detected card.
+  They set upscaling, model detail, SSAO, dynamic shadows, reflections and the frame-rate mode;
+  output resolution and the look settings stay as chosen.
+- **Trophy keys survive launcher updates.** The imported `keys.json` is kept with the launcher
+  settings in `%APPDATA%\bbport-launcher\keys.json` and copied into the active saves folder on
+  every start. Updating the launcher or changing the saves folder no longer needs a re-import.
+- **Updates are checked on every launcher start**, can be checked by hand under
+  **Settings → Launcher → Updates**, and install in one click: the launcher downloads the newest
+  release, replaces its own files, and restarts. Saves, settings, trophy keys and mods are kept.
+
+## What's new in 1.10.11
+
+- **Graphics presets in Settings.** **Settings → Graphics → Graphics presets** has Low, Medium,
+  High and Ultra buttons, with the suggested preset marked for the detected card. Each sets
+  upscaling, model detail, SSAO, dynamic shadows, reflections and the frame-rate mode; output
+  resolution and the look settings stay as chosen.
+- **Trophy keys survive launcher updates.** The imported `keys.json` is kept in
+  `%APPDATA%\bbport-launcher\keys.json` and copied into the active saves folder at every start,
+  so updating the launcher or changing the saves folder no longer needs a re-import.
+- **Launcher updates.** The launcher checks this fork's newest release when it opens, checks on
+  demand under **Settings → Launcher → Updates**, and installs a newer release in one click.
+  Saves, settings, trophy keys and mods are kept.
+- **Launcher polish.** Page and category transitions, focus rings, hover states, scrollbars and
+  status dots now share one motion vocabulary, and the Discord Rich Presence companion is
+  found both in packages and source builds.
+- The 1.10.10 key-binding editor, game-folder saves, setup checklist, parity shell and the
+  renderer, recorder, motion-vector, cache and shader pre-build fixes remain in this build.
 
 ## Features
 
@@ -70,12 +86,16 @@ See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 - Every setting from the old launcher is still available; startup options are marked as applying at the next launch.
 - A live Diagnostics page shows process state, exit code, runtime facts, paths and the session log (copy, save or clear).
 - `Play Bloodborne.exe` starts the game straight away with your saved settings.
-- Update notifications for this fork's full releases.
+- Automatic update checks when the launcher opens, a manual **Check now** button, and
+  one-click installation of this fork's newest release that keeps saves, settings, trophy keys
+  and mods.
 - Discord Rich Presence (game name, hunter level, Platinum state) when the bundled companion
   runs; toggle it under **Settings → Launcher → Engine** (Advanced in the classic launcher).
 - Trophy names, descriptions, grades and progress from your own trophy pack, with an
-  **Import trophy keys** action; the launcher separates unlocked and locked trophies, and the
-  platinum is granted automatically when every base trophy is unlocked.
+  **Import trophy keys** action; the launcher keeps `keys.json` in `%APPDATA%\bbport-launcher`
+  and copies it into the saves folder, so updates and saves-folder changes do not need another
+  import. It separates unlocked and locked trophies, and the platinum is granted automatically
+  when every base trophy is unlocked.
 
 **Graphics**
 - NVIDIA DLSS (GeForce RTX 20 series and newer), AMD FSR 3.1 and FSR 4, native-resolution TAA.
@@ -163,6 +183,9 @@ C:\Games\Bloodborne\
     ├── sce_sys\
     └── user\                  ← saves, trophy keys, shader caches
 ```
+
+Trophy keys are also kept in `%APPDATA%\bbport-launcher\keys.json`; the launcher copies them
+into `user\`, so importing once survives a launcher update or a saves-folder change.
 
 If the launcher says **No eboot.bin**, you chose the wrong folder. If it reports version 1.00,
 the 1.09 update did not apply.

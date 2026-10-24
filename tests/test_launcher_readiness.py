@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'launcher'))
 from bbport_readiness import check_readiness
 from bbport_readiness import import_trophy_key
 from bbport_readiness import save_title_id
+from bbport_readiness import sync_trophy_keys
 
 TEMP_PARENT = Path(__file__).resolve().parents[1] / 'out'
 
@@ -72,6 +73,35 @@ class LauncherReadinessTests(unittest.TestCase):
                 import_trophy_key(bad, user)
             with self.assertRaises(OSError):
                 import_trophy_key(root / 'missing.json', user)
+
+    def test_trophy_key_is_kept_with_the_launcher_and_synced_per_save_folder(self):
+        TEMP_PARENT.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=TEMP_PARENT) as temporary:
+            root = Path(temporary)
+            source = root / 'keys.json'
+            source.write_text(json.dumps({'TrophyKeySet': {'ReleaseTrophyKey': 'cd' * 16}}),
+                              encoding='utf-8')
+            canonical = root / 'config' / 'keys.json'
+            user = root / 'game' / 'user'
+            import_trophy_key(source, user, canonical)
+            self.assertEqual(canonical.read_text(encoding='utf-8'),
+                             user.joinpath('keys.json').read_text(encoding='utf-8'))
+
+            # A new saves folder receives the canonical key without importing it again.
+            new_user = root / 'other-saves'
+            self.assertEqual(sync_trophy_keys(new_user, canonical), 'copied')
+            self.assertEqual((new_user / 'keys.json').read_bytes(),
+                             canonical.read_bytes())
+
+            # An existing key in a saves folder is adopted when there is no canonical copy.
+            canonical.unlink()
+            adopted_user = root / 'adopted'
+            adopted_user.mkdir()
+            (adopted_user / 'keys.json').write_text(source.read_text(encoding='utf-8'),
+                                                    encoding='utf-8')
+            self.assertEqual(sync_trophy_keys(adopted_user, canonical), 'adopted')
+            self.assertTrue(canonical.is_file())
+            self.assertEqual(sync_trophy_keys(adopted_user, canonical), '')
 
     def test_save_id_comes_from_game_metadata(self):
         TEMP_PARENT.mkdir(exist_ok=True)

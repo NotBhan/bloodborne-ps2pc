@@ -17,10 +17,25 @@ Window {
     title: "Bloodborne"
 
     Rectangle {
+        id: card
         anchors.fill: parent
         radius: Theme.radius
         color: Theme.panel
         border.color: Theme.lineStrong
+        opacity: 0
+        scale: 0.98
+        Component.onCompleted: intro.start()
+        ParallelAnimation {
+            id: intro
+            NumberAnimation {
+                target: card; property: "opacity"
+                from: 0; to: 1; duration: Theme.motionSlow; easing.type: Easing.OutCubic
+            }
+            NumberAnimation {
+                target: card; property: "scale"
+                from: 0.98; to: 1; duration: Theme.motionSlow; easing.type: Easing.OutCubic
+            }
+        }
         Rectangle { width: 3; height: parent.height - 24; anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter; color: Theme.accent }
         Image {
             x: 28; anchors.verticalCenter: parent.verticalCenter

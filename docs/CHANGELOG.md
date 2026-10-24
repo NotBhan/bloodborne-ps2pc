@@ -5,6 +5,18 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
+## 1.10.11 (2026-10-24)
+
+- **Graphics presets in Settings:** **Settings → Graphics → Graphics presets** restores Low,
+  Medium, High and Ultra. Each sets upscaling, model detail, SSAO, dynamic shadows, reflections
+  and frame-rate mode; the detected card's suggested preset is marked.
+- **Trophy keys survive launcher updates:** the imported `keys.json` is kept in
+  `%APPDATA%\bbport-launcher\keys.json` and copied into the active saves folder at every launch.
+  Updating the launcher or changing the saves folder no longer needs a re-import.
+- **Launcher updates:** every launcher start checks this fork's newest GitHub release, with a
+  manual **Check now** under **Settings → Launcher → Updates** and one-click installation that
+  preserves saves, settings, trophy keys and mods.
+
 ## 1.10.10 (2026-10-24)
 
 - **Key bindings in the launcher:** **Settings → Controller → Key bindings** lists every

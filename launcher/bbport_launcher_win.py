@@ -39,6 +39,14 @@ DATA_DIR = Path(os.environ.get('BB_DATA_DIR') or PORT_DIR)
 COOP_TEST = False
 CONFIG_DIR = Path(os.environ.get('APPDATA') or Path.home()) / ('bbport-launcher-coop' if COOP_TEST else 'bbport-launcher')
 CONFIG_FILE = CONFIG_DIR / 'settings.json'
+
+
+def trophy_keys_path():
+    """The launcher's copy of keys.json, beside settings.json. The game reads the copy in the
+    saves folder; this canonical one survives updates and saves-folder changes."""
+    return CONFIG_DIR / 'keys.json'
+
+
 PATCH_VERSION = '01.09'
 MAX_LOG_LINES = 6000
 
@@ -91,8 +99,8 @@ def configure_renderer(environ=None, wine=None):
 
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This fork's build; the release tag includes this version.
-VERSION = '1.10.10'
-CURRENT_RELEASE_TAG = 'v1.10.10'
+VERSION = '1.10.11'
+CURRENT_RELEASE_TAG = 'v1.10.11'
 HERO_ART = PORT_DIR / 'launcher' / 'art' / 'hero.png'
 STRIP_ART = PORT_DIR / 'launcher' / 'art' / 'strip.png'
 # Co-op: the community server that answers the game's own server requests.
@@ -533,8 +541,8 @@ GRAPHICS_PRESETS = {
 GRAPHICS_PRESET_INFO = {
     'low': ('Low', 'Performance upscaling (×2), lower model detail, no SSAO or dynamic-light shadows, 60 FPS. '
                    'For integrated graphics, the Steam Deck and cards with under 4 GB.'),
-    'balanced': ('Balanced', "Balanced upscaling (×1.7) and the game's own detail, unlocked frame rate. "
-                             'The default; for cards with 4-8 GB.'),
+    'balanced': ('Medium', "Balanced upscaling (×1.7) and the game's own detail, unlocked frame rate. "
+                           'The default; for cards with 4-8 GB.'),
     'high': ('High', "Quality upscaling (×1.5) and the game's own detail, unlocked frame rate. "
                      'For cards with 8-12 GB.'),
     'ultra': ('Ultra', 'Native resolution, highest model detail and screen-space reflections (not in the '
@@ -2842,7 +2850,7 @@ class Launcher:
             return
         user_dir = saves_dir(self.app)
         try:
-            bbport_readiness.import_trophy_key(source, user_dir)
+            bbport_readiness.import_trophy_key(source, user_dir, trophy_keys_path())
         except (OSError, ValueError) as error:
             self.messagebox.showwarning('Bloodborne', _(
                 'Invalid trophy keys: {}', 'Неверные ключи трофеев: {}').format(error))
@@ -3133,6 +3141,10 @@ def main():
             pass
     # Saves made beside an older launcher move into the game folder, so a new version finds them.
     migrate_saves(settings)
+    try:
+        bbport_readiness.sync_trophy_keys(saves_dir(settings), trophy_keys_path())
+    except OSError as error:
+        debug_log(f'trophy keys: could not sync: {error}')
     LANG = settings.get('ui_language') or windows_language()
     if args[:1] == ['--install-update'] and len(args) == 3:
         sys.exit(install_update(args[1], args[2]))

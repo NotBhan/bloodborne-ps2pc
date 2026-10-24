@@ -16,6 +16,7 @@ ComboBox {
         border.color: control.activeFocus || control.popup.visible ? Theme.accent
                       : control.hovered ? Theme.lineStrong : Theme.line
         border.width: 1
+        Behavior on color { ColorAnimation { duration: Theme.motionFast } }
     }
     contentItem: Text {
         text: control.displayText
@@ -25,10 +26,14 @@ ComboBox {
         elide: Text.ElideRight
         leftPadding: 10
         rightPadding: 26
+        Behavior on color { ColorAnimation { duration: Theme.motionFast } }
     }
     indicator: Canvas {
         width: 9; height: 5
         x: control.width - width - 11; y: (control.height - height) / 2
+        transformOrigin: Item.Center
+        rotation: control.popup.visible ? 180 : 0
+        Behavior on rotation { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
         onPaint: {
             const c = getContext("2d"); c.reset()
             c.strokeStyle = Theme.textDim; c.lineWidth = 1.3
@@ -59,6 +64,16 @@ ComboBox {
         width: control.width
         implicitHeight: Math.min(contentItem.implicitHeight + 6, 300)
         padding: 3
+        transformOrigin: Item.Top
+        enter: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionFast; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "scale"; from: 0.98; to: 1; duration: Theme.motionFast; easing.type: Easing.OutCubic }
+            }
+        }
+        exit: Transition {
+            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 90 }
+        }
         contentItem: ListView {
             clip: true; implicitHeight: contentHeight
             model: control.popup.visible ? control.delegateModel : null

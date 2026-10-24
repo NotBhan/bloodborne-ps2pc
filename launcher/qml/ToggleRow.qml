@@ -9,6 +9,14 @@ Item {
     signal toggled(bool checked)
     width: parent ? parent.width : 400
     height: Math.max(50, texts.implicitHeight + 18)
+    HoverHandler { id: rowHover }
+    Rectangle {
+        anchors.fill: parent
+        radius: Theme.radiusSmall
+        color: Theme.surfaceHover
+        opacity: rowHover.hovered ? 0.35 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
+    }
     Column {
         id: texts; x: 0; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 70; spacing: 3
         Text { width: parent.width; text: row.label; color: Theme.text; font.family: Theme.sans; font.pixelSize: 13; elide: Text.ElideRight }

@@ -165,8 +165,19 @@ done
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
 mkdir -p dist
 rm -f dist/bbport-windows.zip
-(cd out/stage && powershell -NoProfile -Command \
-    "Compress-Archive -Path bbport-windows -DestinationPath ../../dist/bbport-windows.zip")
+# Python's zipfile, not PowerShell: Compress-Archive is missing from Wine's PowerShell and
+# may be unavailable on minimal Windows images. The package already needs this interpreter.
+"$venv/Scripts/python.exe" - "$(cygpath -w "$PWD/out/stage")" \
+    "$(cygpath -w "$PWD/dist/bbport-windows.zip")" <<'PY'
+from pathlib import Path
+import sys
+import zipfile
+
+root, destination = Path(sys.argv[1]), Path(sys.argv[2])
+with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as archive:
+    for path in sorted(root.rglob("*")):
+        archive.write(path, path.relative_to(root))
+PY
 
 # Refresh dist/bbport-windows, keeping what players create there (saves, settings, mods), and
 # only while nothing runs from it: deleting a running launcher's files breaks it.

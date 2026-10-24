@@ -40,6 +40,8 @@ Item {
                                  : details.blockedHint ? Theme.warn : Theme.good
 
     property bool blockedHint: details.savesBlocked || details.onlineBlocked
+    property bool busy: launcher.setupRunning || launcher.launchState === "starting"
+                        || launcher.launchState === "preparing"
     property string graphicsText: launcher.setupFacts.resolution + "  ·  " +
                                   launcher.setupFacts.upscaler + "  ·  " +
                                   (launcher.graphicsPreset === "custom" ? "Custom"
@@ -86,7 +88,7 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         contentWidth: width
         contentHeight: content.implicitHeight + 56
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.vertical: AppScrollBar {}
 
         Column {
             id: content
@@ -131,12 +133,18 @@ Item {
                                       && launcher.launchState !== "preparing"
                                       && launcher.launchState !== "starting")
                             text: details.playLabel
+                            scale: playButton.down ? 0.985 : 1
+                            Behavior on scale { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
                             background: Rectangle {
                                 radius: 22
                                 color: !playButton.enabled ? Theme.surface
-                                       : launcher.running ? Theme.accent : "#f2f0ec"
-                                border.width: launcher.running ? 0 : 1
-                                border.color: "#33ffffff"
+                                       : launcher.running ? Theme.accent
+                                       : playButton.hovered ? "#fbf9f6" : "#f2f0ec"
+                                border.width: playButton.activeFocus ? 2 : (launcher.running ? 0 : 1)
+                                border.color: playButton.activeFocus
+                                              ? (launcher.running ? Theme.text : Theme.accent)
+                                              : "#33ffffff"
+                                Behavior on color { ColorAnimation { duration: Theme.motionFast } }
                             }
                             contentItem: Text {
                                 text: playButton.text
@@ -150,9 +158,13 @@ Item {
                             Accessible.name: playButton.text
                         }
                         Text {
+                            id: chooseFolder
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "Choose game folder"; color: Theme.textDim
+                            text: "Choose game folder"
+                            color: chooseFolderHover.hovered ? Theme.text : Theme.textDim
                             font.family: Theme.sans; font.pixelSize: 12
+                            Behavior on color { ColorAnimation { duration: Theme.motionFast } }
+                            HoverHandler { id: chooseFolderHover }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                 onClicked: details.openSettings("gameData", "Game files")
@@ -161,7 +173,12 @@ Item {
                         Row {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 8
-                            Rectangle { width: 8; height: 8; radius: 4; color: details.statusAccent; anchors.verticalCenter: parent.verticalCenter }
+                            StatusDot {
+                                width: 8; height: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: details.statusAccent
+                                busy: details.busy
+                            }
                             Column {
                                 spacing: 1
                                 Text { text: details.statusTitle; color: Theme.text; font.family: Theme.sans; font.pixelSize: 12 }
@@ -244,6 +261,7 @@ Item {
                 Rectangle {
                     width: parent.width * (details.summary.available ? details.summary.completion / 100 : 0)
                     height: parent.height; radius: 1.5; color: Theme.text
+                    Behavior on width { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
                 }
             }
 

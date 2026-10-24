@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd -- "$(dirname -- "$0")"
+# Windows/MSYS2 uses .exe binaries and %APPDATA% for the launcher settings; Linux uses XDG.
+case $(uname -s) in
+MINGW*|MSYS*)
+    exe=.exe
+    launcher_settings=${APPDATA:-$HOME/AppData/Roaming}/bbport-launcher/settings.json
+    if command -v cygpath >/dev/null 2>&1; then
+        launcher_settings=$(cygpath -u "$launcher_settings")
+    fi
+    ;;
+*)
+    exe=
+    launcher_settings=${XDG_CONFIG_HOME:-${HOME:-}/.config}/bbport-launcher/settings.json
+    ;;
+esac
 if [[ ${1:-} == --software ]]; then
     shift
     if [[ -z ${VK_DRIVER_FILES:-} ]]; then
@@ -36,9 +50,37 @@ if [[ -z ${PYTHON:-} ]]; then
     fi
 fi
 if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1; fi
-# BB_GAME_DIR: the game's folder (eboot.bin, sce_module, ...); default next to this directory.
+# The launcher's saved settings (settings.json): a start through run.sh directly uses them too.
+# Values already in the environment (the launcher, a script or the command line) are kept.
+if [[ -f $launcher_settings ]]; then
+    while IFS= read -r -d '' key && IFS= read -r -d '' value; do
+        [[ -n ${!key:-} ]] || export "$key=$value"
+    done < <("$PYTHON" scripts/launcher_settings.py "$launcher_settings" "$data")
+fi
+# BB_GAME_DIR: the game's folder (eboot.bin, sce_module, ...). Without it, use the game folder
+# saved by the launcher (settings.json), then the folder next to this one.
+if [[ -z ${BB_GAME_DIR:-} ]]; then
+    if [[ -f ../CUSA03173/eboot.bin ]]; then
+        BB_GAME_DIR=../CUSA03173
+    else
+        config=$launcher_settings
+        if [[ -f $config ]]; then
+            saved=$("$PYTHON" -c 'import json,sys; v=json.load(open(sys.argv[1], encoding="utf-8")).get("game_dir",""); print(v if isinstance(v,str) else "")' "$config" 2>/dev/null || true)
+            if [[ -n $saved ]]; then
+                saved=${saved/#\~/${HOME:-}}
+            fi
+            if [[ -n $saved && -f $saved/eboot.bin ]]; then
+                BB_GAME_DIR=$saved
+            fi
+        fi
+    fi
+fi
 game=${BB_GAME_DIR:-../CUSA03173}
-if [[ ! -f $game/eboot.bin ]]; then echo "No eboot.bin in $game (set BB_GAME_DIR)." >&2; exit 1; fi
+if [[ ! -f $game/eboot.bin ]]; then
+    echo "No eboot.bin in $game." >&2
+    echo "Set BB_GAME_DIR to the folder containing eboot.bin, or choose it in the launcher." >&2
+    exit 1
+fi
 original_game=$game
 # Sizes chosen below for the previous launch are recomputed after an in-game restart.
 if [[ ${BB_AUTO_RENDER_RES:-} == 1 ]]; then
@@ -136,6 +178,18 @@ if [[ $game != "$(realpath "$original_game")" ]]; then
     trap '"$PYTHON" -c '\''import shutil,sys; shutil.rmtree(sys.argv[1])'\'' "$mod_game"' EXIT
 fi
 "$PYTHON" scripts/prepare.py "$game" --out "$out"
+# Shader pre-build (same as run.py): the game's own shader code, extracted once into
+# out/shader_code, lets the pipeline cache translate the shaders its cache and the shipped
+# catalog know before they are first drawn. Fewer first-use compiles when an area or a new
+# animated model appears. BB_SHADER_PREBUILD=0 turns it off.
+if [[ ${BB_SHADER_PREBUILD:-1} != 0 ]]; then
+    if "$PYTHON" scripts/shader_code.py --prebuild "$game" "$out/eboot.elf" "$out/shader_code"; then
+        export BB_SHADER_CODE="$out/shader_code"
+    fi
+fi
+if [[ -d shader_catalog ]]; then
+    export BB_SHADER_CATALOG=$PWD/shader_catalog
+fi
 "$PYTHON" scripts/link_libc.py "$game" --out "$out"
 "$PYTHON" scripts/link_modules.py "$game" --out "$out"
 # Legacy CPU profile (scripts/cpu_compat.py): bb-probe's CPU check lets such a CPU start.
@@ -208,25 +262,48 @@ if [[ -z ${BB_PREBUILT:-} && -d fsr4_shaders ]] && command -v spirv-cross >/dev/
     bash tools/fsr4_optimize.sh || echo 'FSR 4: optimized post passes not built' >&2
 fi
 if [[ -n ${BB_PREBUILT:-} ]]; then
-    probe=${BB_PROBE:-bin/bb-probe}
+    probe=${BB_PROBE:-bin/bb-probe$exe}
 else
     bash build.sh
-    probe=out/bb-probe
+    probe=out/bb-probe$exe
 fi
-probe_args=("$out/boot-linked.bin" --content-profile "$out/content.bin" --patches "$out/patches.bin" --app0 "$game" --user "${BB_USER_DIR:-$data/user}" --timeout "${BB_TIMEOUT:-0}" "$@")
+probe_args=("$out/boot-linked.bin" --content-profile "$out/content.bin" --patches "$out/patches.bin" --app0 "$game" --user "${BB_USER_DIR:-$original_game/user}" --timeout "${BB_TIMEOUT:-0}" "$@")
 
 # Supervisor loop: monitors probe execution, handles exit code 85 (Restart to Apply)
 consecutive_restarts=0
 max_consecutive_restarts=1
 min_session_duration=${BB_RESTART_RESET_SECS:-2}
 
+rpc_bin=""
+if [[ ${BB_DISCORD_RPC:-1} != 0 ]]; then
+    rpc_name=BloodborneRPC$exe
+    for candidate in "companions/Discord Rich Presence/$rpc_name" \
+                     "out/companions/Discord Rich Presence/$rpc_name"; do
+        if [[ -x $candidate ]]; then rpc_bin=$PWD/$candidate; break; fi
+    done
+fi
+rpc_pid=""
+stop_children() {
+    kill -TERM "$mod_pid" 2>/dev/null || true
+    if [[ -n $rpc_pid ]]; then kill -TERM "$rpc_pid" 2>/dev/null || true; fi
+}
+
 while true; do
     session_start=$SECONDS
     "$probe" "${probe_args[@]}" &
     mod_pid=$!
-    trap 'kill -TERM "$mod_pid" 2>/dev/null || true' TERM INT
+    trap stop_children TERM INT
+    if [[ -n $rpc_bin ]]; then
+        ( cd "$(dirname "$rpc_bin")" && BB_GAME_PID=$mod_pid exec "$rpc_bin" ) &
+        rpc_pid=$!
+    fi
     mod_status=0
     wait "$mod_pid" || mod_status=$?
+    if [[ -n $rpc_pid ]]; then
+        kill -TERM "$rpc_pid" 2>/dev/null || true
+        wait "$rpc_pid" 2>/dev/null || true
+        rpc_pid=""
+    fi
     # An interrupted wait must finish the child before removing its mounted view.
     if kill -0 "$mod_pid" 2>/dev/null; then wait "$mod_pid" || mod_status=$?; fi
     session_duration=$(( SECONDS - session_start ))

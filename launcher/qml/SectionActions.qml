@@ -38,6 +38,12 @@ Column {
         width: parent.width
     }
 
+    // Graphics presets.
+    GraphicsPresets {
+        visible: actions.is("Visuals", "Graphics presets")
+        width: parent.width
+    }
+
     // FSR 4 assets.
     Flow {
         visible: actions.is("Visuals", "Upscaling")
@@ -117,6 +123,10 @@ Column {
             GlassButton { text: "Import trophy keys"; height: 30; onClicked: launcher.importTrophyKeys() }
             GlassButton { text: "Open saves folder"; height: 30; onClicked: launcher.action("openSaves") }
             GlassButton { text: "Check again"; height: 30; onClicked: launcher.refreshReadiness() }
+        }
+        Note {
+            width: parent.width
+            text: "Trophy keys are kept with the launcher settings and copied into the active saves folder, so importing once survives launcher updates and saves-folder changes."
         }
     }
 

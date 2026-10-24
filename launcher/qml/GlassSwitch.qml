@@ -18,6 +18,7 @@ Switch {
         font: control.font
         leftPadding: control.indicator.width + control.spacing
         verticalAlignment: Text.AlignVCenter
+        Behavior on color { ColorAnimation { duration: Theme.motionFast } }
     }
     indicator: Rectangle {
         implicitWidth: 32
@@ -26,12 +27,16 @@ Switch {
         y: (control.height - height) / 2
         radius: 9
         color: control.checked ? Theme.accent : (control.hovered ? Theme.surfaceActive : Theme.surface)
-        border.color: control.checked ? Theme.accent : Theme.lineStrong
+        border.color: control.activeFocus ? Theme.text
+                      : control.checked ? Theme.accent : Theme.lineStrong
+        Behavior on color { ColorAnimation { duration: Theme.motionFast } }
         Rectangle {
             width: 12; height: 12; radius: 6
             x: control.checked ? parent.width - width - 3 : 3
             y: 3
             color: control.checked ? "#fff6f2" : Theme.textDim
+            Behavior on x { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
+            Behavior on color { ColorAnimation { duration: Theme.motionFast } }
         }
     }
 }

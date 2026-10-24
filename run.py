@@ -187,14 +187,31 @@ def companion_folders(data, env):
         if folder.is_dir() and folder.name in enabled:
             folders[folder.name] = folder
     if str(env.get('BB_DISCORD_RPC', '1')) != '0':
+        rpc_name = 'BloodborneRPC.exe' if os.name == 'nt' else 'BloodborneRPC'
         for parent in (companions, PORT / 'out' / 'companions', PORT / 'companions'):
             folder = parent / 'Discord Rich Presence'
-            if (folder / 'BloodborneRPC.exe').is_file():
-                folders[folder.name] = folder  # prefer a copy that actually has the exe
+            if (folder / rpc_name).is_file():
+                folders[folder.name] = folder  # prefer a copy that actually has the program
                 break
     else:
         folders.pop('Discord Rich Presence', None)  # the launcher toggle wins
     return list(folders.values())
+
+
+def companion_program(folder, spec):
+    """The companion executable named by companion.json, with or without Windows' .exe:
+    packages on Linux build `BloodborneRPC`, Windows builds `BloodborneRPC.exe`."""
+    name = str(spec.get('exe') or '')
+    if not name:
+        return None
+    named = folder / name
+    if named.is_file():
+        return named
+    stem = named.stem
+    for candidate in (folder / (stem + '.exe'), folder / stem):
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def start_companions(data, env, game_pid):
@@ -205,8 +222,8 @@ def start_companions(data, env, game_pid):
     for folder in companion_folders(data, env):
         try:
             spec = json.loads((folder / 'companion.json').read_text(encoding='utf-8'))
-            exe = folder / spec.get('exe', '')
-            if not exe.is_file() or exe.suffix.lower() != '.exe':
+            exe = companion_program(folder, spec)
+            if exe is None:
                 continue
             print(f'Companion: {spec.get("name", folder.name)}')
             started.append(subprocess.Popen([str(exe)], cwd=folder, env={**env, 'BB_GAME_PID': str(game_pid)},

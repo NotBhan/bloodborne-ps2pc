@@ -8,8 +8,26 @@ Item {
     signal openSetup(int step)
     property string activeCategory: ""
     property string activeSection: ""
+    property bool ready: false
+    property bool detailOpen: activeCategory !== ""
 
     property var categories: launcher.settingsCategories
+
+    Component.onCompleted: Qt.callLater(function () { root.ready = true })
+
+    onActiveCategoryChanged: {
+        if (activeCategory !== "" && ready)
+            categoryReveal.restart()
+    }
+
+    NumberAnimation {
+        id: categoryReveal
+        target: detailContent
+        property: "opacity"
+        from: 0.4; to: 1
+        duration: Theme.motionBase
+        easing.type: Easing.OutCubic
+    }
 
     function categoryFor(key) {
         for (let i = 0; i < categories.length; i++)
@@ -53,13 +71,26 @@ Item {
 
     // Category menu.
     Flickable {
-        visible: root.activeCategory === ""
         anchors.fill: parent
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         contentWidth: width
         contentHeight: menuContent.implicitHeight + 56
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.vertical: AppScrollBar {}
+        enabled: !root.detailOpen
+        opacity: root.detailOpen ? 0 : 1
+        visible: opacity > 0.01
+        transform: Translate {
+            x: root.detailOpen ? -10 : 0
+            Behavior on x {
+                enabled: root.ready
+                NumberAnimation { duration: Theme.motionBase; easing.type: Easing.OutCubic }
+            }
+        }
+        Behavior on opacity {
+            enabled: root.ready
+            NumberAnimation { duration: Theme.motionBase; easing.type: Easing.OutCubic }
+        }
 
         Column {
             id: menuContent
@@ -82,6 +113,7 @@ Item {
                     background: Rectangle {
                         color: categoryRow.activeFocus ? Theme.surfaceActive
                                : categoryRow.hovered ? Theme.surfaceHover : "transparent"
+                        Behavior on color { ColorAnimation { duration: Theme.motionFast } }
                         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
                         Rectangle {
                             visible: categoryRow.activeFocus
@@ -113,9 +145,22 @@ Item {
 
     // Category detail.
     Column {
-        visible: root.activeCategory !== ""
         anchors.fill: parent
         spacing: 0
+        enabled: root.detailOpen
+        opacity: root.detailOpen ? 1 : 0
+        visible: opacity > 0.01
+        transform: Translate {
+            x: root.detailOpen ? 0 : 14
+            Behavior on x {
+                enabled: root.ready
+                NumberAnimation { duration: Theme.motionBase; easing.type: Easing.OutCubic }
+            }
+        }
+        Behavior on opacity {
+            enabled: root.ready
+            NumberAnimation { duration: Theme.motionBase; easing.type: Easing.OutCubic }
+        }
 
         Row {
             width: parent.width; height: 52
@@ -151,7 +196,7 @@ Item {
                 boundsBehavior: Flickable.StopAtBounds
                 contentWidth: width
                 contentHeight: detailContent.implicitHeight + 40
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: AppScrollBar {}
                 onVisibleChanged: contentY = 0
 
                 Column {
