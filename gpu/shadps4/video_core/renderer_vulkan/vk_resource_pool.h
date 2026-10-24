@@ -75,6 +75,11 @@ public:
 
     vk::DescriptorSet Commit(vk::DescriptorSetLayout set_layout);
 
+    /// Drops the cached sets of a layout that is about to be destroyed. A pipeline eviction
+    /// destroys its layout while sets allocated from it are still cached here; the driver may
+    /// hand the same handle to a later layout, and Commit() would return a stale set.
+    void ForgetLayout(vk::DescriptorSetLayout set_layout);
+
 private:
     void CreateDescriptorPool();
 

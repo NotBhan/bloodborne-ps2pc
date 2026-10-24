@@ -20,7 +20,14 @@ Pipeline::Pipeline(const Instance& instance_, Scheduler& scheduler_, DescriptorH
     : instance{instance_}, scheduler{scheduler_}, desc_heap{desc_heap_}, profile{profile_},
       is_compute{is_compute_} {}
 
-Pipeline::~Pipeline() = default;
+Pipeline::~Pipeline() {
+    // The descriptor heap caches sets by layout handle. Leaving them there when the layout is
+    // destroyed lets a later layout with a recycled handle return a stale set: on NVIDIA that
+    // ended in a null read inside the driver after the pipeline cache evicted old pipelines.
+    if (!uses_push_descriptors && desc_layout) {
+        desc_heap.ForgetLayout(*desc_layout);
+    }
+}
 
 
 void Pipeline::BindResources(DescriptorWrites& set_writes,

@@ -5,6 +5,17 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
+## 1.10.10 (2026-10-24)
+
+- **Pipeline-cache crash fix:** evicting old pipelines no longer leaves their cached
+  descriptor sets behind under a destroyed `VkDescriptorSetLayout` handle, and eviction waits
+  for submitted GPU work before destroying layouts. This addresses a mid-game `nvoglv64.dll`
+  null read seen right after the 10-minute pipeline-cache release on NVIDIA.
+- **Windows launcher:** key bindings are editable in the launcher, and saves now default to
+  `user\` inside the game folder so launcher updates keep them.
+- The Linux bundle is rebuilt with the renderer fix; the 1.10.9 launcher checklist and
+  renderer/cache updates remain.
+
 ## 1.10.9 (2026-10-23)
 
 - **Setup page:** the GTK launcher gains a first-run checklist page. Game files, trophy keys,
