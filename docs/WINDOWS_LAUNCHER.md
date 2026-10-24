@@ -11,14 +11,14 @@ full-width category list that opens one category at a time. The Windows backend,
 keys, executable, packaging toolchain, and Windows process model remain compatible with the
 existing Windows build.
 
-## Release 1.10.9
+## Release 1.10.10
 
-Download [bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.9/bbport-windows.zip)
-from the [release page](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.9).
-This build adds the **Facegen** switch that stops the FaceGen face and eye vertex explosions
-(off applies Kyo's patch at the cost of face customization), warns that Precise readbacks are
-slower, and makes a direct `run.sh` start use the launcher's saved settings. The 1.10.8 parity
-shell, trophy details, shader-precompile controls and the recorder, motion-vector, cache and
+Download [bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.10/bbport-windows.zip)
+from the [release page](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.10).
+This build adds the **Settings → Controller → Key bindings** editor, moves the default saves
+folder into the game folder (with automatic migration from the old launcher folder), and fixes
+the NVIDIA `nvoglv64.dll` crash that followed pipeline-cache eviction. The 1.10.9 Facegen
+switch, setup checklist, parity shell and the renderer, recorder, motion-vector, cache and
 shader pre-build fixes remain. See [CHANGELOG.md](CHANGELOG.md) and the
 [project README](../README.md).
 
@@ -65,8 +65,8 @@ Settings categories:
 | **Upscaling** | Upscaler, upscaling preset, live resolution and object-motion vectors, FSR 4 asset download and status. |
 | **Performance** | Frame-rate mode, unlocked-mode limit, frames ahead, presentation mode, engine draw pipeline/readbacks/extra environment. |
 | **Compatibility** | Developer debug views and validation. |
-| **Controller** | Button prompts, mouse, keyboard. |
-| **Game & Data** | Game folder, DLC folder, saves folder, trophy keys, language, hunter name, skip-intro, mods and load order, built-in enhancements, Hunter's Atlas, external patches, gameplay patches, The Hunter's Dream sign-in, seamless co-op hosting and joining. |
+| **Controller** | Button prompts, mouse, keyboard movement and keyboard/mouse key bindings. |
+| **Game & Data** | Game folder, DLC folder, saves folder (defaults to `user\` in the game folder so launcher updates keep it), trophy keys, language, hunter name, skip-intro, mods and load order, built-in enhancements, Hunter's Atlas, external patches, gameplay patches, The Hunter's Dream sign-in, seamless co-op hosting and joining. |
 | **Launcher** | Launcher language, direct-start behavior, desktop/Steam shortcuts, updates from this fork's releases, maintenance. |
 | **Diagnostics** | The live log and runtime report described above. |
 

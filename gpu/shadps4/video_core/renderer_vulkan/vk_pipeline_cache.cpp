@@ -1030,6 +1030,10 @@ void PipelineCache::CollectUnusedPipelines(int minutes) {
     if (last_tick != 0 && !scheduler.IsFree(last_tick)) {
         return;
     }
+    // Destroying a pipeline also destroys its descriptor set layout. Make sure every command
+    // buffer that could still use a descriptor set allocated from it has finished; a submission
+    // in flight while the layout goes away crashes NVIDIA's driver.
+    scheduler.WaitSubmitted();
     for (const auto& key : dead_graphics) {
         graphics_pipelines.erase(key);
     }

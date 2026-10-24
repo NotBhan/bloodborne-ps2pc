@@ -146,6 +146,46 @@ class FirstRunWizardTests(unittest.TestCase):
         every = [field['key'] for page in pages for field in backend.fields(page)]
         self.assertEqual(len(every), len(set(every)), 'a setting appears on two pages')
 
+    def test_key_bindings_are_listed_saved_and_reset(self):
+        backend = LauncherBackend()
+        groups = backend.keyBindings
+        self.assertEqual([group['section'] for group in groups],
+                         ['Movement', 'Combat and items', 'Menus and switching'])
+        bindings = {binding['action']: binding for group in groups
+                    for binding in group['bindings']}
+        self.assertEqual(bindings['move_forward']['display'], 'W')
+        self.assertEqual(bindings['attack']['display'], 'Mouse1')
+        self.assertEqual(bindings['firearm']['display'], 'X + Mouse2')
+        self.assertEqual(core.sdl_key_name(0x57, 'w', False), 'W')
+        self.assertEqual(core.sdl_key_name(0x31, '1', True), 'Keypad 1')
+
+        # A key already in use is taken from the action that had it.
+        backend.setKeyBinding('interact', 'G', '')
+        ini = (self.root / 'bbport.ini').read_text(encoding='utf-8')
+        self.assertIn('key_interact=G', ini)
+        self.assertIn('key_gestures=none', ini)
+        bindings = {binding['action']: binding for group in backend.keyBindings
+                    for binding in group['bindings']}
+        self.assertEqual(bindings['interact']['display'], 'G')
+        self.assertEqual(bindings['gestures']['display'], 'Unbound')
+
+        # A mouse input replaces only the mouse part; a key replaces only the key part.
+        backend.setKeyBinding('interact', 'E', 'WheelDown')
+        self.assertIn('key_interact=E, WheelDown',
+                      (self.root / 'bbport.ini').read_text(encoding='utf-8'))
+        backend.setKeyBinding('interact', 'R', '')
+        ini = (self.root / 'bbport.ini').read_text(encoding='utf-8')
+        self.assertIn('key_interact=R', ini)
+        self.assertIn('key_blood_vial=none', ini)
+
+        backend.resetKeyBinding('interact')
+        self.assertIn('key_interact=E', (self.root / 'bbport.ini').read_text(encoding='utf-8'))
+
+        backend.resetKeyBindings()
+        ini = (self.root / 'bbport.ini').read_text(encoding='utf-8')
+        self.assertNotIn('key_interact=', ini)
+        self.assertNotIn('key_gestures=', ini)
+
 
 if __name__ == '__main__':
     unittest.main()

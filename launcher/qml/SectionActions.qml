@@ -32,6 +32,12 @@ Column {
         text: "The prompt set shown from the next start. Both extra sets ship with the launcher: Xbox by Dommo and the PCBButtons keyboard images by JinkiJinn. Keyboard also binds the keys its images show."
     }
 
+    // Keyboard and mouse bindings.
+    KeyBindings {
+        visible: actions.is("Controls", "Key bindings")
+        width: parent.width
+    }
+
     // FSR 4 assets.
     Flow {
         visible: actions.is("Visuals", "Upscaling")

@@ -91,8 +91,8 @@ def configure_renderer(environ=None, wine=None):
 
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This fork's build; the release tag includes this version.
-VERSION = '1.10.9'
-CURRENT_RELEASE_TAG = 'v1.10.9'
+VERSION = '1.10.10'
+CURRENT_RELEASE_TAG = 'v1.10.10'
 HERO_ART = PORT_DIR / 'launcher' / 'art' / 'hero.png'
 STRIP_ART = PORT_DIR / 'launcher' / 'art' / 'strip.png'
 # Co-op: the community server that answers the game's own server requests.
@@ -301,6 +301,148 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
                 # finished or skipped; launchDirectly starts the game without the launcher.
                 'setupCompleted': False, 'setupSkipped': False, 'setupVersion': 1,
                 'launchDirectly': True}
+
+# Keyboard and mouse bindings (src/input_bindings.c): key_<action>=<key>, <mouse input> in
+# bbport.ini. One key and one mouse input per action; "none" leaves it unbound. The action
+# names, labels and defaults mirror the runtime's table, so the editor cannot drift from
+# what the game reads.
+KEY_BINDING_SECTIONS = [
+    ('Movement', (
+        ('move_forward', 'Move Forward', 'W', ''),
+        ('move_back', 'Move Back', 'S', ''),
+        ('move_left', 'Move Left', 'A', ''),
+        ('move_right', 'Move Right', 'D', ''),
+        ('walk', 'Walk', 'Left Alt', ''),
+        ('look_up', 'Look Up', 'I', ''),
+        ('look_down', 'Look Down', 'K', ''),
+        ('look_left', 'Look Left', 'J', ''),
+        ('look_right', 'Look Right', 'L', ''),
+        ('roll', 'Dodge / Sprint', 'Space', ''),
+        ('lock_on', 'Lock On', 'Q', ''),
+    )),
+    ('Combat and items', (
+        ('attack', 'Attack', '', 'Mouse1'),
+        ('strong_attack', 'Strong Attack', 'V', ''),
+        ('strong_modifier', 'Strong Attack Modifier', 'Left Shift', ''),
+        ('transform', 'Transform', 'C', 'Mouse3'),
+        ('firearm', 'Firearm / Parry', 'X', 'Mouse2'),
+        ('blood_vial', 'Blood Vial', 'R', ''),
+        ('use_item', 'Use Item', 'F', ''),
+        ('interact', 'Interact', 'E', ''),
+    )),
+    ('Menus and switching', (
+        ('switch_item', 'Switch Item', 'Down', ''),
+        ('switch_right', 'Switch Right Weapon', 'Right', ''),
+        ('switch_left', 'Switch Left Weapon', 'Left', ''),
+        ('dpad_up', 'D-pad Up', 'Up', ''),
+        ('gestures', 'Gestures', 'G', ''),
+        ('personal_effects', 'Personal Effects', 'T', ''),
+        ('menu', 'Menu', 'Escape', ''),
+        ('confirm', 'Menu Confirm', 'Return', ''),
+        ('back', 'Menu Back', 'Backspace', ''),
+        ('l3', 'Left Stick Press', 'Left Ctrl', ''),
+    )),
+]
+KEY_BINDING_SPECS = tuple(spec for _section, specs in KEY_BINDING_SECTIONS for spec in specs)
+KEY_BINDING_BY_ACTION = {spec[0]: spec for spec in KEY_BINDING_SPECS}
+MOUSE_TOKEN_NAMES = {'mouse1': 'Mouse1', 'mouse2': 'Mouse2', 'mouse3': 'Mouse3',
+                     'mouse4': 'Mouse4', 'mouse5': 'Mouse5', 'wheelup': 'WheelUp',
+                     'wheeldown': 'WheelDown'}
+
+# Qt key codes the QML capture dialog passes; names are the SDL scancode names
+# input_bindings.c hands to SDL_GetScancodeFromName.
+QT_KEY_NAMES = {
+    0x20: 'Space',
+    0x21: '1', 0x22: "'", 0x23: '3', 0x24: '4', 0x25: '5', 0x26: '7', 0x27: "'",
+    0x28: '9', 0x29: '0', 0x2a: '8', 0x2b: '=', 0x2c: ',', 0x2d: '-', 0x2e: '.', 0x2f: '/',
+    0x3a: ';', 0x3b: ';', 0x3c: ',', 0x3d: '=', 0x3e: '.', 0x3f: '/', 0x40: '2',
+    0x5b: '[', 0x5c: '\\', 0x5d: ']', 0x5e: '6', 0x5f: '-', 0x60: '`',
+    0x7b: '[', 0x7c: '\\', 0x7d: ']', 0x7e: '`',
+    0x01000000: 'Escape', 0x01000001: 'Tab', 0x01000002: 'Tab', 0x01000003: 'Backspace',
+    0x01000004: 'Return', 0x01000005: 'Return', 0x01000006: 'Insert', 0x01000007: 'Delete',
+    0x01000008: 'Pause', 0x01000009: 'PrintScreen', 0x0100000a: 'SysReq', 0x0100000b: 'Clear',
+    0x01000010: 'Home', 0x01000011: 'End', 0x01000012: 'Left', 0x01000013: 'Up',
+    0x01000014: 'Right', 0x01000015: 'Down', 0x01000016: 'PageUp', 0x01000017: 'PageDown',
+    0x01000020: 'Left Shift', 0x01000021: 'Left Ctrl', 0x01000022: 'Left GUI',
+    0x01000023: 'Left Alt', 0x01000024: 'CapsLock', 0x01000025: 'Numlock',
+    0x01000026: 'ScrollLock', 0x01000053: 'Left GUI', 0x01000054: 'Right GUI',
+    0x01000055: 'Menu', 0x01000056: 'Left GUI', 0x01000057: 'Right GUI',
+}
+QT_KEYPAD_NAMES = {
+    0x01000005: 'Keypad Enter', 0x2b: 'Keypad +', 0x2d: 'Keypad -', 0x2a: 'Keypad *',
+    0x2f: 'Keypad /', 0x2e: 'Keypad .', 0x2c: 'Keypad .', 0x3d: 'Keypad =',
+    **{0x30 + digit: f'Keypad {digit}' for digit in range(10)},
+}
+TEXT_KEY_NAMES = {
+    ' ': 'Space', '!': '1', '"': "'", '#': '3', '$': '4', '%': '5', '&': '7', "'": "'",
+    '(': '9', ')': '0', '*': '8', '+': '=', ',': ',', '-': '-', '.': '.', '/': '/',
+    ':': ';', ';': ';', '<': ',', '=': '=', '>': '.', '?': '/', '@': '2', '[': '[',
+    '\\': '\\', ']': ']', '^': '6', '_': '-', '`': '`', '{': '[', '|': '\\', '}': ']',
+    '~': '`',
+}
+SAVE_DATA_NAMES = ('savedata', 'keys.json', 'trophies.txt', 'trophy_cache')
+
+
+def parse_key_binding(raw, default_key='', default_mouse=''):
+    """Read key_<action> the way the runtime does; None means the defaults apply."""
+    if raw is None:
+        return default_key, default_mouse
+    key, mouse = '', ''
+    for part in str(raw).split(','):
+        token = part.strip()
+        if not token or token.lower() == 'none':
+            continue
+        mouse_name = MOUSE_TOKEN_NAMES.get(token.lower())
+        if mouse_name:
+            mouse = mouse_name
+        else:
+            key = token
+    return key, mouse
+
+
+def format_key_binding(key, mouse):
+    parts = [part for part in (key, mouse) if part]
+    return ', '.join(parts) if parts else 'none'
+
+
+def canonical_mouse(value):
+    return MOUSE_TOKEN_NAMES.get(str(value).strip().lower(), '')
+
+
+def binding_parts(ini, action):
+    """The key and mouse input an action currently has, defaults included."""
+    spec = KEY_BINDING_BY_ACTION.get(action)
+    if spec is None:
+        return '', ''
+    return parse_key_binding((ini or {}).get(f'key_{action}'), spec[2], spec[3])
+
+
+def binding_display(ini, action):
+    key, mouse = binding_parts(ini, action)
+    return ' + '.join(part for part in (key, mouse) if part) or 'Unbound'
+
+
+def sdl_key_name(key, text='', keypad=False):
+    """A Qt key event as the SDL scancode name bbport.ini expects; '' when unsupported."""
+    if keypad:
+        name = QT_KEYPAD_NAMES.get(key)
+        if name is not None:
+            return name
+    name = QT_KEY_NAMES.get(key)
+    if name is not None:
+        return name
+    if 0x41 <= key <= 0x5a:
+        return chr(key)
+    if 0x30 <= key <= 0x39:
+        return chr(key)
+    if 0x01000030 <= key <= 0x01000030 + 34:
+        number = key - 0x01000030 + 1
+        return f'F{number}' if number <= 24 else ''
+    if isinstance(text, str) and len(text) == 1:
+        if text.isascii() and text.isalnum():
+            return text.upper()
+        return TEXT_KEY_NAMES.get(text, '')
+    return ''
 
 UPSCALERS = [('dlss', ('DLSS (NVIDIA GeForce RTX)',)),
              ('fsr4', ('FSR 4 (best quality)', 'FSR 4 (лучшее качество)')),
@@ -534,6 +676,61 @@ def fsr4_gpu_supported():
 def expanded_path(value):
     """A folder as the game will see it: `~` and Windows `%VARIABLE%` expanded."""
     return str(Path(os.path.expandvars(os.path.expanduser(str(value)))))
+
+
+def saves_dir(settings, data_dir=None):
+    """The game's writable user folder (saves, trophy keys, caches).
+
+    An explicit saves folder wins. Otherwise it lives in the game folder, so updating or
+    extracting the launcher into a new folder no longer hides the saves; the launcher's data
+    folder is only used while no game folder is configured."""
+    folder = settings.get('user_dir')
+    if folder:
+        return Path(expanded_path(folder))
+    game = settings.get('game_dir')
+    if game:
+        return Path(expanded_path(game)) / 'user'
+    return Path(data_dir or DATA_DIR) / 'user'
+
+
+def migrate_saves(settings, data_dir=None):
+    """Move saves left in the launcher folder by an older version into the game folder once.
+
+    Older versions kept <launcher>/user; a new release extracted to another folder therefore
+    looked like a fresh install. Only save data (not an empty user folder) is moved. Returns
+    True when something was moved."""
+    if settings.get('user_dir') or not settings.get('game_dir'):
+        return False
+    game = Path(expanded_path(settings['game_dir']))
+    if not (game / 'eboot.bin').is_file():
+        return False
+    old = Path(data_dir or DATA_DIR) / 'user'
+    new = game / 'user'
+    try:
+        if old.resolve() == new.resolve() or not old.is_dir():
+            return False
+    except OSError:
+        return False
+    if not any((old / name).exists() for name in SAVE_DATA_NAMES):
+        return False
+    try:
+        new.parent.mkdir(parents=True, exist_ok=True)
+        if not new.exists():
+            shutil.move(str(old), str(new))
+        else:
+            for entry in old.iterdir():
+                target = new / entry.name
+                if not target.exists():
+                    shutil.move(str(entry), str(target))
+            try:
+                old.rmdir()
+            except OSError:
+                pass
+    except OSError as error:
+        debug_log(f'saves: could not move {old} to {new}: {error}')
+        return False
+    debug_log(f'saves: moved older launcher saves from {old} to {new}')
+    return True
 
 
 def setting_value(key, value):
@@ -840,7 +1037,7 @@ def game_environment(s):
     env['BB_PORT_VERSION'] = VERSION
     env['BB_CLIENT_VERSION'] = CLIENT_VERSION  # what shadNet and The Hunter's Dream see
     env['BB_GAME_DIR'] = expanded_path(s['game_dir'])
-    env['BB_USER_DIR'] = expanded_path(s['user_dir']) if s['user_dir'] else str(DATA_DIR / 'user')
+    env['BB_USER_DIR'] = str(saves_dir(s))
     if s['dlc_dir']:
         env['BB_DLC_DIR'] = expanded_path(s['dlc_dir'])
     env['BB_MODS_DIR'] = expanded_path(s['mods_dir'] or DATA_DIR / 'mods')
@@ -1830,8 +2027,10 @@ class Launcher:
                       'dvdroot_ps4); версия 1.09 для патчей сообщества.'), on_change=self.game_changed)
         self.folder(f, 'user_dir', _('Saves folder', 'Папка сохранений'),
                     _('Choose the saves folder', 'Выберите папку сохранений'),
-                    _('Empty: {} (shader caches are kept there too).',
-                      'Пусто: {} (там же кэш шейдеров).').format(DATA_DIR / 'user'), on_change=self.refresh_status)
+                    _('Empty: {} (inside the game folder, with the shader caches; updates keep it).',
+                      'Пусто: {} (в папке игры, вместе с кэшем шейдеров; обновления её сохраняют).'
+                      ).format(saves_dir(self.app)),
+                    on_change=self.refresh_status)
         self.folder(f, 'dlc_dir', _('DLC folder'), _('Choose the DLC folder'),
                     _('Your dumped add-ons, one folder each named like SPEXPANSIONDLC03 (The Old Hunters). '
                       'Only needed with a base-game dump; the Game of the Year edition (CUSA03173) has it.'))
@@ -2097,8 +2296,8 @@ class Launcher:
         else:
             game = _('⚠ Game version {}: runs at 30 FPS without the community patches (they are for 1.09)',
                      '⚠ Версия игры {}: 30 FPS без патчей сообщества (они для 1.09)').format(info[1])
-        user_dir = self.var('user_dir', 'app').get()
-        user = Path(expanded_path(user_dir)) if user_dir else DATA_DIR / 'user'
+        user = saves_dir({'user_dir': self.var('user_dir', 'app').get(),
+                          'game_dir': self.var('game_dir', 'app').get()})
         saves = list((user / 'savedata').glob('*/*/SPRJ*')) if (user / 'savedata').is_dir() else []
         save = (_('✓ Saves found', '✓ Сохранения найдены') if saves
                 else _('• No saves yet: the game creates them when you play',
@@ -2402,9 +2601,8 @@ class Launcher:
     def read_output(self, process):
         """Helper thread: the game's output to the Log page and to <saves folder>/last_run.log."""
         log = None
-        user_dir = self.app.get('user_dir')
         try:
-            log = open_run_log(expanded_path(user_dir) if user_dir else DATA_DIR / 'user')
+            log = open_run_log(saves_dir(self.app))
         except OSError:
             pass
         warned = False
@@ -2487,7 +2685,7 @@ class Launcher:
 
     def open_path(self, path, key=None):
         if key == 'user_dir' and not path:
-            path = DATA_DIR / 'user'
+            path = saves_dir(self.app)
         elif key == 'mods_dir' and not path:
             path = DATA_DIR / 'mods'
         elif key == 'patches_dir' and not path:
@@ -2642,7 +2840,7 @@ class Launcher:
             filetypes=[('JSON', '*.json')])
         if not source:
             return
-        user_dir = Path(expanded_path(self.app.get('user_dir') or DATA_DIR / 'user'))
+        user_dir = saves_dir(self.app)
         try:
             bbport_readiness.import_trophy_key(source, user_dir)
         except (OSError, ValueError) as error:
@@ -2658,7 +2856,7 @@ class Launcher:
         if self.process:
             return
         import shutil
-        cache = Path(self.app['user_dir'] or DATA_DIR / 'user') / 'cache'
+        cache = saves_dir(self.app) / 'cache'
         shutil.rmtree(cache, ignore_errors=True)
         self.messagebox.showinfo('Bloodborne', _('Shader cache cleared. The next start stutters for a few minutes while '
                                                  'it is rebuilt.', 'Кэш шейдеров очищен. Следующий запуск несколько '
@@ -2797,8 +2995,7 @@ def play_without_window(settings):
     when there is one and to <saves folder>/last_run.log."""
     attach_stdio()
     start_quiet_update_check(settings)
-    user_dir = settings.get('user_dir')
-    with open_run_log(expanded_path(user_dir) if user_dir else DATA_DIR / 'user') as log:
+    with open_run_log(saves_dir(settings)) as log:
         process = subprocess.Popen(run_command(), cwd=PORT_DIR, env=game_environment(settings),
                                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
@@ -2934,6 +3131,8 @@ def main():
             atomic_write_text(CONFIG_FILE, json.dumps(settings, indent=2, ensure_ascii=False))
         except OSError:
             pass
+    # Saves made beside an older launcher move into the game folder, so a new version finds them.
+    migrate_saves(settings)
     LANG = settings.get('ui_language') or windows_language()
     if args[:1] == ['--install-update'] and len(args) == 3:
         sys.exit(install_update(args[1], args[2]))

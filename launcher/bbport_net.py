@@ -11,7 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.10.9"
+VERSION = "1.10.10"
 CLIENT_VERSION = f"bbport-jgamrot {VERSION}"
 COMMUNITY_SERVER = "https://thehuntersdream.com"
 HUNTERS_DREAM_POOL = os.environ.get("BB_HUNTERS_DREAM") != "0"

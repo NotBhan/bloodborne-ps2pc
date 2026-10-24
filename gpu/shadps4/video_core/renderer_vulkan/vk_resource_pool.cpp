@@ -118,6 +118,10 @@ DescriptorHeap::~DescriptorHeap() {
     }
 }
 
+void DescriptorHeap::ForgetLayout(vk::DescriptorSetLayout set_layout) {
+    descriptor_sets.erase(std::bit_cast<u64>(set_layout));
+}
+
 vk::DescriptorSet DescriptorHeap::Commit(vk::DescriptorSetLayout set_layout) {
     const u64 set_key = std::bit_cast<u64>(set_layout);
     const auto [it, _] = descriptor_sets.try_emplace(set_key);

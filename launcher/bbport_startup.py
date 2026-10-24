@@ -43,8 +43,15 @@ def writable(folder):
 
 
 def saves_folder(settings, data_dir):
+    """An explicit saves folder, else <game folder>/user so launcher updates keep them,
+    else the data folder while no game folder is configured."""
     folder = settings.get('user_dir')
-    return expanded(folder) if folder else Path(data_dir) / 'user'
+    if folder:
+        return expanded(folder)
+    game = settings.get('game_dir')
+    if game:
+        return expanded(game) / 'user'
+    return Path(data_dir) / 'user'
 
 
 def migrate(saved, settings):

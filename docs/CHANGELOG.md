@@ -5,6 +5,23 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
+## 1.10.10 (2026-10-24)
+
+- **Key bindings in the launcher:** **Settings → Controller → Key bindings** lists every
+  keyboard and mouse action. A capture dialog accepts a key, mouse button or the wheel, keeps
+  one key and one mouse input per action, takes a duplicate from the action that had it, and
+  offers per-binding and full reset. Bindings are written as `key_<action>=` in `bbport.ini`
+  and apply at the next game start.
+- **Saves stay with the game:** the default saves folder is now `user\` inside the game
+  folder instead of next to `Bloodborne.exe`, so updating the launcher or extracting a new
+  version keeps the same saves. An explicit saves folder still wins, and saves left in the
+  launcher folder by an in-place update are moved across on the first start.
+- **Pipeline-cache crash fix:** evicting old pipelines no longer leaves their cached
+  descriptor sets behind under a destroyed `VkDescriptorSetLayout` handle, and eviction waits
+  for submitted GPU work before destroying layouts. This addresses the mid-game
+  `nvoglv64.dll` null read seen right after the 10-minute pipeline-cache release on NVIDIA.
+- The Linux bundle is rebuilt with the same renderer fix.
+
 ## 1.10.9 (2026-10-23)
 
 - **Setup page:** the four-step first-run wizard is now one checklist page. Game files, trophy

@@ -27,31 +27,32 @@ settings keys, and preparation scripts.
 
 ## Download
 
-Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.9/bbport-windows.zip)**
-from the [1.10.9 release](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.9)
+Download **[bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.10/bbport-windows.zip)**
+from the [1.10.10 release](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.10)
 and extract the whole archive. The archive contains the frozen launcher (`Bloodborne.exe`),
 `bin/bb-probe.exe`, the preparation scripts, shader catalog and the runtime DLLs; no Python
 install is required. The source archives on the release page are for developers. It contains
 no game files.
 
 The same release page also carries the Linux bundle
-([`bbport-linux-x86_64.tar.gz`](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.9/bbport-linux-x86_64.tar.gz)).
+([`bbport-linux-x86_64.tar.gz`](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.10/bbport-linux-x86_64.tar.gz)).
 See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
 [changelog](docs/CHANGELOG.md).
 
-## What's new in 1.10.9
+## What's new in 1.10.10
 
-- **FaceGen fix.** A **Facegen** switch stops the face and eye vertex explosions: off applies
-  Kyo's Disable Facegen patch, at the cost of face customization. Relaxed readbacks plus the
-  patch replace Precise readbacks, which wait for the GPU on every read and lower both CPU and
-  GPU utilisation.
-- **Setup checklist.** The first-run wizard is one page with the game-file, trophy-key and
-  saves checks, their fixes inline and graphics beside them.
-- **Direct launch settings.** Starting the Linux bundle's `run.sh` directly now uses the
-  launcher's saved FPS, readbacks, pipeline and other settings instead of defaults.
-- The 1.10.8 parity shell, trophy details, Discord Rich Presence, shader-precompile controls
-  and the renderer, recorder, motion-vector, cache and shader pre-build fixes remain in this
-  build.
+- **Key bindings in the launcher.** **Settings → Controller → Key bindings** lists every
+  action and captures a key, mouse button or wheel input. Duplicate keys move to the new
+  action, and per-binding or full reset is available; changes apply at the next start.
+- **Saves stay with the game.** The default saves folder is now `user\` inside the game
+  folder rather than next to `Bloodborne.exe`, so launcher updates and new extractions keep
+  the same saves. Saves found in the old launcher folder are moved across automatically.
+- **NVIDIA pipeline-cache crash fixed.** Evicted pipelines no longer leave stale cached
+  descriptor sets under a destroyed layout handle, and eviction waits for submitted GPU work
+  before destroying layouts. This fixes the mid-game `nvoglv64.dll` null read seen after the
+  10-minute pipeline-cache release.
+- The 1.10.9 Facegen switch, setup checklist, parity shell and the renderer, recorder,
+  motion-vector, cache and shader pre-build fixes remain in this build.
 
 ## Features
 
@@ -98,8 +99,8 @@ See the [Windows launcher reference](docs/WINDOWS_LAUNCHER.md) and
   mods and cheats. Achievement toasts when a trophy unlocks.
 
 **Controls**
-- Controller, and keyboard and mouse at the same time, with rebindable keys
-  (`key_<action>=` lines in `bbport.ini`).
+- Controller, and keyboard and mouse at the same time, with rebindable keys in
+  **Settings → Controller → Key bindings** (or `key_<action>=` lines in `bbport.ini`).
 - Mouse camera: click the game window and the mouse turns the camera 1:1. Sensitivity and
   invert Y are in **Settings → Controller → Mouse**.
 - Keyboard movement smoothing: changing direction with WASD swings smoothly instead of
@@ -141,8 +142,9 @@ What changed in each release: [docs/CHANGELOG.md](docs/CHANGELOG.md).
      extracted into `CUSA03173`; allow about 70 GB free for a 30 GB archive. Or
    - click **Choose a game folder** and pick the folder with `eboot.bin` directly inside.
 4. Under **Trophy keys** and **Saves**, optionally import your own `keys.json` (for achievement
-   names) or choose an existing saves folder. The checks turn green when the game folder has
-   version 1.09; amber is normal for a new install without saves.
+   names) or choose an existing saves folder. Saves live in `user\` inside the game folder by
+   default, so updating or moving the launcher keeps them. The checks turn green when the game
+   folder has version 1.09; amber is normal for a new install without saves.
 5. Pick a graphics preset on the same page, then click **Play**. The first launch prepares files
    and builds the known shaders (*Preparing shaders: N%* in the window title), so it takes a
    while; later starts are quick.
@@ -158,7 +160,8 @@ C:\Games\Bloodborne\
     ├── eboot.bin
     ├── dvdroot_ps4\
     ├── sce_module\
-    └── sce_sys\
+    ├── sce_sys\
+    └── user\                  ← saves, trophy keys, shader caches
 ```
 
 If the launcher says **No eboot.bin**, you chose the wrong folder. If it reports version 1.00,
@@ -170,8 +173,9 @@ base-game dump, dump your add-ons too: each is a folder named like `SPEXPANSIOND
 **Settings → Game & Data → Game files**.
 
 **Achievements.** Names, descriptions and Gamerscore need the trophy key from your own PS4 in
-`user\keys.json` (shadPS4's format, `{"TrophyKeySet":{"ReleaseTrophyKey":"..."}}`). Without it,
-achievements show their numbers and icons. Nothing syncs to PlayStation Network.
+`user\keys.json` inside the game folder (shadPS4's format,
+`{"TrophyKeySet":{"ReleaseTrophyKey":"..."}}`). Without it, achievements show their numbers and
+icons. Nothing syncs to PlayStation Network.
 
 ## Keyboard button prompts
 
@@ -200,8 +204,9 @@ Keep your extracted game folder where it is; there is no need to extract it agai
 2. Extract this package to a **new** folder and run its `Bloodborne.exe`. Do not copy only
    `Bloodborne.exe` into an older port.
 3. On **Settings → Game & Data → Game files**, set **Game folder** to your existing folder with
-   `eboot.bin`, and **Saves folder** to your existing `user` folder (or copy your saves into the
-   new one while everything is closed). Keep the backup until your character loads.
+   `eboot.bin`. Saves now default to `user\` inside that game folder, so copy the old `user`
+   folder there, or set **Saves folder** to the old one. Keep the backup until your character
+   loads.
 4. Copy over the mods you still want and enable them under
    **Settings → Game & Data → Installed mods**.
 
@@ -269,7 +274,7 @@ Game settings are stored in `bbport.ini` and launcher settings in
 
 - What is planned next: [docs/ROADMAP.md](docs/ROADMAP.md).
 - Problems: open an [issue](https://github.com/NotBhan/bloodborne-ps2pc/issues) with your graphics
-  card, what happened, `user\last_run.log`, and the launcher session log saved from
+  card, what happened, `user\last_run.log` in the game folder, and the launcher session log saved from
   **Diagnostics → Save log…** (or `%APPDATA%\bbport-launcher\launcher-debug.log` when started with
   `BB_LAUNCHER_DEBUG=1`).
 - Release history: [docs/CHANGELOG.md](docs/CHANGELOG.md).

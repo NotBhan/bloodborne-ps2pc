@@ -237,6 +237,118 @@ class SettingsTests(unittest.TestCase):
                 self.assertNotIn(key, warm)
 
 
+class BindingTests(unittest.TestCase):
+    def test_defaults_come_from_the_runtime_table(self):
+        self.assertEqual(launcher.binding_parts({}, 'move_forward'), ('W', ''))
+        self.assertEqual(launcher.binding_parts({}, 'attack'), ('', 'Mouse1'))
+        self.assertEqual(launcher.binding_parts({}, 'transform'), ('C', 'Mouse3'))
+        self.assertEqual(launcher.binding_parts({}, 'menu'), ('Escape', ''))
+        self.assertEqual(launcher.binding_display({}, 'firearm'), 'X + Mouse2')
+        self.assertEqual(launcher.binding_display({}, 'unknown'), 'Unbound')
+
+    def test_binding_values_are_parsed_and_formatted_like_the_runtime(self):
+        self.assertEqual(launcher.parse_key_binding(None, 'W', ''), ('W', ''))
+        self.assertEqual(launcher.parse_key_binding(''), ('', ''))
+        self.assertEqual(launcher.parse_key_binding('None', 'W', ''), ('', ''))
+        self.assertEqual(launcher.parse_key_binding('e, mouse2'), ('e', 'Mouse2'))
+        self.assertEqual(launcher.parse_key_binding('WheelUp, Left Shift'), ('Left Shift', 'WheelUp'))
+        self.assertEqual(launcher.format_key_binding('E', 'Mouse2'), 'E, Mouse2')
+        self.assertEqual(launcher.format_key_binding('', ''), 'none')
+        self.assertEqual(launcher.canonical_mouse('mouse5'), 'Mouse5')
+        self.assertEqual(launcher.canonical_mouse('wheeldown'), 'WheelDown')
+        self.assertEqual(launcher.canonical_mouse('not a mouse'), '')
+
+    def test_table_actions_are_unique(self):
+        actions = [spec[0] for spec in launcher.KEY_BINDING_SPECS]
+        self.assertEqual(len(actions), len(set(actions)))
+        self.assertEqual(set(launcher.KEY_BINDING_BY_ACTION), set(actions))
+
+    def test_qt_keys_become_sdl_names(self):
+        self.assertEqual(launcher.sdl_key_name(0x57, 'w'), 'W')
+        self.assertEqual(launcher.sdl_key_name(0x31, '1'), '1')
+        self.assertEqual(launcher.sdl_key_name(0x21, '!'), '1')
+        self.assertEqual(launcher.sdl_key_name(0x20, ' '), 'Space')
+        self.assertEqual(launcher.sdl_key_name(0x01000020, ''), 'Left Shift')
+        self.assertEqual(launcher.sdl_key_name(0x01000004, ''), 'Return')
+        self.assertEqual(launcher.sdl_key_name(0x01000030, ''), 'F1')
+        self.assertEqual(launcher.sdl_key_name(0x31, '1', keypad=True), 'Keypad 1')
+        self.assertEqual(launcher.sdl_key_name(0x01000005, '', keypad=True), 'Keypad Enter')
+        self.assertEqual(launcher.sdl_key_name(0x01000059, ''), '')
+
+
+class SaveFolderTests(unittest.TestCase):
+    def test_default_saves_live_in_the_game_folder(self):
+        settings = {'game_dir': 'C:/Games/CUSA03173', 'user_dir': ''}
+        self.assertEqual(launcher.saves_dir(settings), Path('C:/Games/CUSA03173/user'))
+
+    def test_explicit_saves_folder_wins(self):
+        settings = {'game_dir': 'C:/Games/CUSA03173', 'user_dir': 'D:/Saves'}
+        self.assertEqual(launcher.saves_dir(settings), Path('D:/Saves'))
+
+    def test_data_folder_is_only_used_before_a_game_folder_is_chosen(self):
+        self.assertEqual(launcher.saves_dir({'game_dir': '', 'user_dir': ''}, Path('/tmp/port')),
+                         Path('/tmp/port/user'))
+
+    def test_game_environment_uses_the_game_folder_for_saves(self):
+        settings = launcher.validated_settings({'game_dir': 'C:/Games/CUSA03173', 'user_dir': ''})
+        self.assertEqual(launcher.game_environment(settings)['BB_USER_DIR'],
+                         str(Path('C:/Games/CUSA03173/user')))
+
+    def test_old_launcher_saves_move_into_the_game_folder_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data, game = root / 'launcher', root / 'CUSA03173'
+            game.mkdir()
+            (game / 'eboot.bin').write_bytes(b'\0')
+            save = data / 'user' / 'savedata' / '1' / 'CUSA03173' / 'SPRJ0005'
+            save.mkdir(parents=True)
+            (save / 'userdata0000').write_bytes(b'save')
+            settings = {'game_dir': str(game), 'user_dir': ''}
+            self.assertTrue(launcher.migrate_saves(settings, data))
+            self.assertTrue((game / 'user' / 'savedata' / '1' / 'CUSA03173' / 'SPRJ0005'
+                             / 'userdata0000').is_file())
+            self.assertFalse((data / 'user').exists())
+            self.assertFalse(launcher.migrate_saves(settings, data), 'only once')
+
+    def test_explicit_saves_folder_is_never_moved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data, game = root / 'launcher', root / 'CUSA03173'
+            game.mkdir()
+            (game / 'eboot.bin').write_bytes(b'\0')
+            chosen = root / 'chosen'
+            save = data / 'user' / 'savedata'
+            save.mkdir(parents=True)
+            self.assertFalse(launcher.migrate_saves(
+                {'game_dir': str(game), 'user_dir': str(chosen)}, data))
+            self.assertTrue((data / 'user').is_dir())
+
+    def test_saves_are_not_moved_into_an_unselected_game_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data = root / 'launcher'
+            (data / 'user' / 'savedata').mkdir(parents=True)
+            game = root / 'empty-folder'
+            game.mkdir()
+            self.assertFalse(launcher.migrate_saves({'game_dir': str(game), 'user_dir': ''}, data))
+            self.assertTrue((data / 'user' / 'savedata').is_dir())
+
+    def test_existing_game_saves_are_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data, game = root / 'launcher', root / 'CUSA03173'
+            game.mkdir()
+            (game / 'eboot.bin').write_bytes(b'\0')
+            (data / 'user' / 'savedata').mkdir(parents=True)
+            (data / 'user' / 'keys.json').write_text('{}', encoding='utf-8')
+            (game / 'user' / 'savedata').mkdir(parents=True)
+            (game / 'user' / 'savedata' / 'current').write_text('keep', encoding='utf-8')
+            self.assertTrue(launcher.migrate_saves({'game_dir': str(game), 'user_dir': ''}, data))
+            self.assertEqual((game / 'user' / 'savedata' / 'current').read_text(encoding='utf-8'),
+                             'keep')
+            self.assertTrue((game / 'user' / 'keys.json').is_file())
+
+
 class AssetTests(unittest.TestCase):
     def test_spirv_header_and_sizes_are_validated(self):
         with tempfile.TemporaryDirectory() as tmp:

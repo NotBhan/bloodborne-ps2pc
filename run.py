@@ -436,7 +436,9 @@ def main():
 
         # The in-game restart starts this script again once this process is gone.
         # GPU caches (shaders, pipelines) beside the saves; read before main(), so set here.
-        user_dir = Path(env.get('BB_USER_DIR') or data / 'user').resolve()
+        # Saves live in the game folder, not beside the launcher: a new launcher version is
+        # then a new copy of the program, not a new set of saves.
+        user_dir = Path(env.get('BB_USER_DIR') or original_game / 'user').resolve()
         user_dir.mkdir(parents=True, exist_ok=True)
         env.setdefault('BB_GPU_USER_DIR', str(user_dir))
         if env.get('BB_COOP') == '1':

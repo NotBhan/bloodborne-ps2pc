@@ -93,7 +93,8 @@ FIELDS = {
     ],
     'Game': [
         row('game_dir', 'Game folder (contains eboot.bin)', 'folder'),
-        row('user_dir', 'Saves folder', 'folder'),
+        row('user_dir', 'Saves folder', 'folder',
+            hint='Empty: a user folder inside the game folder. Saves then stay with the game when the launcher updates.'),
         row('dlc_dir', 'DLC folder (base-game dumps only, e.g. SPEXPANSIONDLC03)', 'folder'),
         row('language', 'Game language', 'choice', core.LANGUAGES),
         row('player_name', 'Hunter name'),
@@ -171,6 +172,7 @@ SETTINGS_SECTIONS = {
         ('Button prompts', []),
         ('Mouse', ['mouse_camera', 'mouse_menu', 'mouse_sensitivity', 'mouse_invert_y']),
         ('Keyboard', ['move_smoothing']),
+        ('Key bindings', []),
     ],
     'Game & Saves': [
         ('Game files', ['game_dir', 'dlc_dir']),
@@ -242,6 +244,7 @@ LAUNCHER_PAGES = {
         ('Controls', 'Button prompts'),
         ('Controls', 'Mouse'),
         ('Controls', 'Keyboard'),
+        ('Controls', 'Key bindings'),
     ],
     'Mods': [
         ('Mods & Patches', 'Installed mods'),
@@ -273,11 +276,12 @@ SECTION_HINTS = {
     ('Visuals', 'Overlay'): 'Overlays drawn by the port.',
     ('Visuals', 'Display & frame rate'): 'Output size, window mode, presentation and frame pacing.',
     ('Game & Saves', 'Game files'): 'Your own 1.09 dump. The installer never replaces an existing folder.',
-    ('Game & Saves', 'Your data'): 'Saves, trophy keys and the writable data folder.',
+    ('Game & Saves', 'Your data'): 'Saves, trophy keys and the writable data folder. By default it lives inside the game folder, so launcher updates keep it.',
     ('Game & Saves', 'In-game preferences'): 'Language and hunter name written into the game session.',
     ('Controls', 'Button prompts'): 'Which prompt images the game shows, from the next start.',
     ('Controls', 'Mouse'): 'Mouse camera and menu pointer.',
     ('Controls', 'Keyboard'): 'Keyboard movement feel.',
+    ('Controls', 'Key bindings'): 'Keyboard and mouse bindings for the game. Changes apply at the next start.',
     ('Mods & Patches', 'Installed mods'): 'Loose-file mods layered over the game; the game files are never changed.',
     ('Mods & Patches', 'Built-in enhancements'): 'Files made from your game at launch. Restart to apply.',
     ('Mods & Patches', "Hunter's Atlas (map)"): 'A full-screen map generated from your own game files.',
@@ -325,6 +329,7 @@ LAUNCHER_CATEGORIES = [
         {'category': 'Controls', 'section': 'Button prompts'},
         {'category': 'Controls', 'section': 'Mouse'},
         {'category': 'Controls', 'section': 'Keyboard'},
+        {'category': 'Controls', 'section': 'Key bindings'},
     ]},
     {'key': 'gameData', 'label': 'Game & Data', 'icon': 'folder', 'groups': [
         {'category': 'Game & Saves', 'section': 'Game files'},
@@ -358,6 +363,7 @@ SEARCH_TERMS = {
 }
 SEARCH_ACTIONS = [
     ('Controls', 'Button prompts', 'Xbox and PlayStation prompts', 'button controller'),
+    ('Controls', 'Key bindings', 'Change keyboard and mouse bindings', 'rebind keys controls'),
     ('Visuals', 'Upscaling', 'Download FSR 4 assets', 'fsr shader'),
     ('Game & Saves', 'Game files', 'Install from ZIP / PKG', 'game files setup'),
     ('Game & Saves', 'Your data', 'Import trophy keys', 'keys.json trophies'),
@@ -405,6 +411,7 @@ class LauncherBackend(QObject):
     def __init__(self, route=None):
         super().__init__()
         self.app = core.load_app_settings()
+        core.migrate_saves(self.app)
         for signal in (self.changed, self.coopChanged, self.thdChanged):
             signal.connect(self.playModeChanged)
         self._route = dict(route or LAUNCHER_ROUTE)
@@ -522,8 +529,7 @@ class LauncherBackend(QObject):
 
     @Property('QVariantMap', notify=changed)
     def paths(self):
-        user_dir = self.app.get('user_dir')
-        user = Path(core.expanded_path(user_dir)) if user_dir else core.DATA_DIR / 'user'
+        user = core.saves_dir(self.app)
         return {
             'port': str(core.PORT_DIR),
             'data': str(core.DATA_DIR),
@@ -555,7 +561,7 @@ class LauncherBackend(QObject):
         if self._problem == 'game':
             return not bbport_startup.game_ok(self.app)
         if self._problem == 'saves':
-            return not bbport_startup.writable(bbport_startup.saves_folder(self.app, core.DATA_DIR))
+            return not bbport_startup.writable(core.saves_dir(self.app))
         return False
 
     @Property(str, notify=changed)
@@ -639,7 +645,7 @@ class LauncherBackend(QObject):
 
     @Property(bool, notify=changed)
     def savesWritable(self):
-        return bbport_startup.writable(bbport_startup.saves_folder(self.app, core.DATA_DIR))
+        return bbport_startup.writable(core.saves_dir(self.app))
 
     @Property(bool, notify=changed)
     def onlineIdInvalid(self):
@@ -648,9 +654,8 @@ class LauncherBackend(QObject):
     @Property('QVariantList', notify=changed)
     def readiness(self):
         game_dir = self.app.get('game_dir')
-        user_dir = self.app.get('user_dir') or core.DATA_DIR / 'user'
         return check_readiness(core.expanded_path(game_dir) if game_dir else None,
-                               core.expanded_path(user_dir), core.game_info)
+                               str(core.saves_dir(self.app)), core.game_info)
 
     @Slot()
     def refreshReadiness(self):
@@ -966,6 +971,96 @@ class LauncherBackend(QObject):
         value = self.value(key)
         return value is True or value == '1'
 
+    # --- Keyboard and mouse bindings (core.KEY_BINDING_SECTIONS) ------------------------------
+
+    @Property('QVariantList', notify=changed)
+    def keyBindings(self):
+        groups = []
+        for section, specs in core.KEY_BINDING_SECTIONS:
+            bindings = []
+            for action, label, _default_key, _default_mouse in specs:
+                key, mouse = core.binding_parts(self.ini, action)
+                bindings.append({
+                    'action': action, 'label': label,
+                    'display': ' + '.join(part for part in (key, mouse) if part) or 'Unbound',
+                    'key': key, 'mouse': mouse,
+                })
+            groups.append({'section': section, 'bindings': bindings})
+        return groups
+
+    @Slot(int, str, bool, result=str)
+    def sdlKeyName(self, key, text, keypad):
+        """A Qt key from the capture dialog as the SDL name bbport.ini expects."""
+        return core.sdl_key_name(key, text, keypad)
+
+    @Slot(str, str, str)
+    def setKeyBinding(self, action, key, mouse):
+        if action not in core.KEY_BINDING_BY_ACTION:
+            return
+        key = str(key).strip()
+        mouse = core.canonical_mouse(mouse)
+        changed = {}
+        # One key and one mouse input per action: whatever else had it gives it up.
+        for spec in core.KEY_BINDING_SPECS:
+            other = spec[0]
+            if other == action:
+                continue
+            other_key, other_mouse = core.binding_parts(self.ini, other)
+            cleared = False
+            if key and other_key.lower() == key.lower():
+                other_key, cleared = '', True
+            if mouse and other_mouse.lower() == mouse.lower():
+                other_mouse, cleared = '', True
+            if cleared:
+                value = core.format_key_binding(other_key, other_mouse)
+                self.ini[f'key_{other}'] = value
+                changed[f'key_{other}'] = value
+        value = core.format_key_binding(key, mouse)
+        self.ini[f'key_{action}'] = value
+        changed[f'key_{action}'] = value
+        try:
+            core.save_ini(changed, self.ini_lines)
+        except OSError as error:
+            self.ini, self.ini_lines = core.load_ini()
+            self._set_notice(f'Could not save the binding: {error}')
+            return
+        self.ini, self.ini_lines = core.load_ini()
+        self.changed.emit()
+        self._set_notice('Binding saved. It applies the next time the game starts.')
+
+    @Slot(str)
+    def resetKeyBinding(self, action):
+        spec = core.KEY_BINDING_BY_ACTION.get(action)
+        if spec is None:
+            return
+        value = core.format_key_binding(spec[2], spec[3])
+        self.ini[f'key_{action}'] = value
+        try:
+            core.save_ini({f'key_{action}': value}, self.ini_lines)
+        except OSError as error:
+            self.ini, self.ini_lines = core.load_ini()
+            self._set_notice(f'Could not reset the binding: {error}')
+            return
+        self.ini, self.ini_lines = core.load_ini()
+        self.changed.emit()
+        self._set_notice('Binding reset to its default.')
+
+    @Slot()
+    def resetKeyBindings(self):
+        self.ini_lines = [line for line in self.ini_lines
+                          if not line.strip().startswith('key_')]
+        for name in [name for name in self.ini if name.startswith('key_')]:
+            self.ini.pop(name, None)
+        try:
+            core.save_ini({}, self.ini_lines)
+        except OSError as error:
+            self.ini, self.ini_lines = core.load_ini()
+            self._set_notice(f'Could not reset the bindings: {error}')
+            return
+        self.ini, self.ini_lines = core.load_ini()
+        self.changed.emit()
+        self._set_notice('Key bindings reset.')
+
     # --- Trophies, play time and real game activity ------------------------------------------
 
     def _activity_path(self):
@@ -1027,7 +1122,7 @@ class LauncherBackend(QObject):
     @Slot()
     def refreshTrophies(self):
         game_dir = self.app.get('game_dir')
-        user_dir = Path(core.expanded_path(self.app.get('user_dir') or core.DATA_DIR / 'user'))
+        user_dir = core.saves_dir(self.app)
         try:
             report = load_trophy_report(
                 user_dir, core.expanded_path(game_dir) if game_dir else None)
@@ -1130,7 +1225,7 @@ class LauncherBackend(QObject):
                                 f'This is not a valid trophy keys.json: {error}')
             return
 
-        user_dir = Path(core.expanded_path(self.app.get('user_dir') or core.DATA_DIR / 'user'))
+        user_dir = core.saves_dir(self.app)
         destination = user_dir / 'keys.json'
 
         if destination.exists():
@@ -1159,9 +1254,10 @@ class LauncherBackend(QObject):
     def browse(self, key):
         if key not in ('game_dir', 'user_dir', 'dlc_dir', 'mods_dir', 'patches_dir'):
             return
-        folder = QFileDialog.getExistingDirectory(None, f'Choose {key.replace("_", " ")}', str(self.value(key) or core.DATA_DIR))
+        initial = core.saves_dir(self.app) if key == 'user_dir' else (self.value(key) or core.DATA_DIR)
+        folder = QFileDialog.getExistingDirectory(None, f'Choose {key.replace("_", " ")}', str(initial))
         if folder:
-            old_user = Path(self.value('user_dir') or core.DATA_DIR / 'user')
+            old_user = core.saves_dir(self.app)
             self.setValue(key, folder)
             if key == 'user_dir':
                 self._carry_trophy_keys(old_user, Path(folder))
@@ -1186,7 +1282,8 @@ class LauncherBackend(QObject):
     def openFolder(self, key):
         path = self.value(key) if key else core.PORT_DIR
         if not path:
-            path = core.DATA_DIR / {'user_dir': 'user', 'mods_dir': 'mods', 'patches_dir': 'patches'}.get(key, '')
+            path = core.saves_dir(self.app) if key == 'user_dir' else core.DATA_DIR / {
+                'mods_dir': 'mods', 'patches_dir': 'patches'}.get(key, '')
         path = Path(core.expanded_path(path)) if path else core.PORT_DIR
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
@@ -1309,8 +1406,7 @@ class LauncherBackend(QObject):
     def _read_output(self, process):
         log = None
         try:
-            user_dir = self.app.get('user_dir')
-            log = core.open_run_log(core.expanded_path(user_dir) if user_dir else core.DATA_DIR / 'user')
+            log = core.open_run_log(core.saves_dir(self.app))
         except OSError:
             pass
         try:
@@ -1878,7 +1974,7 @@ class LauncherBackend(QObject):
                 self._coop_progress('First time: say Yes to the Windows prompt (firewall)…')
                 coop.run_setup(game)
             coop.create_account(address, key, name, password)
-            backup = coop.backup_saves(self.app.get('user_dir') or core.DATA_DIR / 'user')
+            backup = coop.backup_saves(core.saves_dir(self.app))
             self._coop_launch_env = coop.co_op_environment(core.game_environment(self.app), address,
                                                            name, password, game, save_copy=backup)
             where = f' Saves backed up to {backup}.' if backup else ''
@@ -2133,7 +2229,7 @@ class LauncherBackend(QObject):
             if self.running:
                 self._set_notice('Close the game before clearing its cache.')
             else:
-                shutil.rmtree(Path(self.app.get('user_dir') or core.DATA_DIR / 'user') / 'cache', ignore_errors=True)
+                shutil.rmtree(core.saves_dir(self.app) / 'cache', ignore_errors=True)
                 self._set_notice('Shader cache cleared. The next launch will rebuild it.')
         elif name == 'copyLog':
             QGuiApplication.clipboard().setText(self._log)

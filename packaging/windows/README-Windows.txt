@@ -53,9 +53,10 @@ Starting
 - Keyboard and mouse work alongside a controller. Default keys: WASD move, I/J/K/L camera
   (or click the window for the mouse camera), Space dodge, E interact, R blood vial, F item,
   C transform, left mouse attack, Shift + left mouse or V strong attack, right mouse firearm,
-  Q lock on, arrow keys d-pad, G gestures, T personal effects, Escape menu. Rebind with
-  key_<action>= lines in bbport.ini. Choosing Keyboard prompts in the launcher (it imports your
-  own PCBButtons download from Nexus Mods) switches to the keys its images show instead.
+  Q lock on, arrow keys d-pad, G gestures, T personal effects, Escape menu. Rebind them in
+  Settings -> Controller -> Key bindings, or with key_<action>= lines in bbport.ini. Choosing
+  Keyboard prompts in the launcher (it imports your own PCBButtons download from Nexus Mods)
+  switches to the keys its images show instead.
 - The game's System menu has a native Achievements section. Earned trophies also show an
   achievement popup and appear in the guide's Achievements section.
   In Achievements, "Preview achievement toast" tests the popup without unlocking anything.
@@ -69,12 +70,16 @@ Switching from another launcher
 - Extract this entire package to a NEW folder. Do not copy only Bloodborne.exe into an older
   launcher folder; the matching bin, scripts, patches, and support files are also needed.
 - Open this package's Bloodborne.exe. Under "Game", choose the existing folder that
-  contains eboot.bin as "Game folder". Set "Saves folder" to the old user folder if you want
-  those saves, or copy your backed-up saves into the new user folder while both apps are closed.
+  contains eboot.bin as "Game folder". Saves live in user\ inside that folder; copy your
+  backed-up saves there (or set "Saves folder" to the old user folder) while both apps are
+  closed.
 - Copy only the mods you want into the new mods folder, enable them, and press PLAY.
 
 Data
-- Saves and shader caches: user\ next to Bloodborne.exe (the launcher can pick another folder).
+- Saves and shader caches: user\ inside your game folder (the launcher can pick another
+  folder). Keeping them with the game means updating the launcher, or extracting a new
+  version beside the old one, still finds the same saves. Saves left in the launcher
+  folder by an in-place update are moved there automatically on the first start.
 - Settings: bbport.ini next to Bloodborne.exe; launcher options in %APPDATA%\bbport-launcher.
 - Generated files (prepared game image, patches): out\.
 
