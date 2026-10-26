@@ -2090,15 +2090,27 @@ int PS4_SYSV_ABI sceGnmSqttWaitForEvent() {
 static inline s32 PatchFlipRequest(u32* cmdbuf, u32 size, u32 vo_handle, u32 buf_idx, u32 flip_mode,
                                    s64 flip_arg, void* unk) {
     // check for `prepareFlip` packet
+    if (size < 64) {
+        LOG_ERROR(Lib_GnmDriver, "DCB too small for a flip packet: {} dwords", size);
+        return ORBIS_GNM_ERROR_SUBMISSION_AND_FLIP_FAILED_INVALID_COMMAND_BUFFER;
+    }
     cmdbuf += size - 64;
-    ASSERT_MSG(cmdbuf[0] == 0xc03e1000, "Can't find `prepareFlip` packet");
+    if (cmdbuf[0] != 0xc03e1000) {
+        LOG_ERROR(Lib_GnmDriver, "Can't find `prepareFlip` packet (header {:#x})", cmdbuf[0]);
+        return ORBIS_GNM_ERROR_SUBMISSION_AND_FLIP_FAILED_INVALID_COMMAND_BUFFER;
+    }
 
     std::array<u32, 7> backup{};
     std::memcpy(backup.data(), cmdbuf, backup.size() * sizeof(decltype(backup)::value_type));
 
-    ASSERT_MSG(((backup[2] & 3) == 0u) || (backup[1] != PM4CmdNop::PayloadType::PrepareFlipLabel),
-               "Invalid flip packet");
-    ASSERT_MSG(buf_idx != 0xffff'ffffu, "Invalid VO buffer index");
+    if (((backup[2] & 3) != 0u) && (backup[1] == PM4CmdNop::PayloadType::PrepareFlipLabel)) {
+        LOG_ERROR(Lib_GnmDriver, "Invalid flip packet");
+        return ORBIS_GNM_ERROR_SUBMISSION_AND_FLIP_FAILED_INVALID_COMMAND_BUFFER;
+    }
+    if (buf_idx == 0xffff'ffffu) {
+        LOG_ERROR(Lib_GnmDriver, "Invalid VO buffer index");
+        return ORBIS_GNM_ERROR_SUBMISSION_FAILED_INVALID_ARGUMENT;
+    }
 
     const s32 flip_result = VideoOut::sceVideoOutSubmitEopFlip(vo_handle, buf_idx, flip_mode,
                                                                flip_arg, nullptr /*unk*/);
@@ -2280,6 +2292,14 @@ s32 PS4_SYSV_ABI sceGnmSubmitAndFlipCommandBuffersForWorkload(
             LOG_ERROR(Lib_GnmDriver, "Submitting a null DCB {}", i);
             return 0x80d11000;
         }
+        if (!dcb_gpu_addrs[i]) {
+            LOG_ERROR(Lib_GnmDriver, "DCB address {} is null", i);
+            return 0x80d11000;
+        }
+        if (ccb_sizes_in_bytes && ccb_sizes_in_bytes[i] != 0 && !ccb_gpu_addrs[i]) {
+            LOG_ERROR(Lib_GnmDriver, "CCB address {} is null", i);
+            return 0x80d11000;
+        }
         if (dcb_sizes_in_bytes[i] > 0x3ffffc) {
             LOG_ERROR(Lib_GnmDriver, "dcbSizesInBytes[{}] ({}) is limited to (2*20)-1 DWORDS", i,
                       dcb_sizes_in_bytes[i]);
@@ -2290,6 +2310,11 @@ s32 PS4_SYSV_ABI sceGnmSubmitAndFlipCommandBuffersForWorkload(
                       ccb_sizes_in_bytes[i]);
             return 0x80d11000;
         }
+    }
+
+    if (count == 0) {
+        LOG_ERROR(Lib_GnmDriver, "Submitting zero command buffers");
+        return 0x80d11000;
     }
 
     auto* cmdbuf = dcb_gpu_addrs[count - 1];
@@ -2326,6 +2351,14 @@ s32 PS4_SYSV_ABI sceGnmSubmitCommandBuffersForWorkload(u32 workload, u32 count,
             LOG_ERROR(Lib_GnmDriver, "Submitting a null DCB {}", i);
             return 0x80d11000;
         }
+        if (!dcb_gpu_addrs[i]) {
+            LOG_ERROR(Lib_GnmDriver, "DCB address {} is null", i);
+            return 0x80d11000;
+        }
+        if (ccb_sizes_in_bytes && ccb_sizes_in_bytes[i] != 0 && !ccb_gpu_addrs[i]) {
+            LOG_ERROR(Lib_GnmDriver, "CCB address {} is null", i);
+            return 0x80d11000;
+        }
         if (dcb_sizes_in_bytes[i] > 0x3ffffc) {
             LOG_ERROR(Lib_GnmDriver, "dcbSizesInBytes[{}] ({}) is limited to (2*20)-1 DWORDS", i,
                       dcb_sizes_in_bytes[i]);
@@ -2336,6 +2369,11 @@ s32 PS4_SYSV_ABI sceGnmSubmitCommandBuffersForWorkload(u32 workload, u32 count,
                       ccb_sizes_in_bytes[i]);
             return 0x80d11000;
         }
+    }
+
+    if (count == 0) {
+        LOG_ERROR(Lib_GnmDriver, "Submitting zero command buffers");
+        return 0x80d11000;
     }
 
     std::scoped_lock lk{m_submit_lock};
@@ -2925,10 +2963,6 @@ void RegisterLib(Core::Loader::SymbolsResolver* sym) {
     const s32 result = sceKernelGetCompiledSdkVersion(&sdk_version);
     if (result != ORBIS_OK) {
         sdk_version = 0;
-    }
-
-    if (EmulatorSettings.IsCopyGpuBuffers()) {
-        liverpool->ReserveCopyBufferSpace();
     }
 
     Platform::IrqC::Instance()->Register(Platform::InterruptId::GpuIdle, ResetSubmissionLock,

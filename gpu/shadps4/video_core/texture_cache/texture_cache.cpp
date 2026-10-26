@@ -1374,6 +1374,9 @@ void TextureCache::RunGarbageCollector() {
         ++gc_tick;
     };
 
+    // Images whose deferred GPU work has retired (DeleteImage's callback ran). Drain before the
+    // GC so the slots are gone before anything scans the LRU.
+    FlushPendingDeletes();
     GarbageCollectImages();
     GarbageCollectSamplers();
 }
@@ -1410,8 +1413,27 @@ void TextureCache::DeleteImage(ImageId image_id) {
         }
     }
 
-    // Reclaim image and any image views it references.
+    // Reclaim image and any image views it references. The GPU may still use them until this
+    // tick retires; the actual slot/container erase is queued to the GPU command thread, which
+    // takes `mutex` (guest threads call FindImage concurrently). Erasing from this deferred
+    // callback raced those readers and could free a slot under a live reference.
     scheduler.DeferOperation([this, image_id] {
+        std::scoped_lock lk{delete_mutex};
+        pending_deletes.push_back(image_id);
+    });
+}
+
+void TextureCache::FlushPendingDeletes() {
+    std::vector<ImageId> deletes;
+    {
+        std::scoped_lock lk{delete_mutex};
+        deletes.swap(pending_deletes);
+    }
+    if (deletes.empty()) {
+        return;
+    }
+    std::scoped_lock lk{mutex};
+    for (const ImageId image_id : deletes) {
         Image& image = slot_images[image_id];
         for (auto& backing : image.backing_images) {
             for (const ImageViewId image_view_id : backing.image_view_ids) {
@@ -1419,7 +1441,7 @@ void TextureCache::DeleteImage(ImageId image_id) {
             }
         }
         slot_images.erase(image_id);
-    });
+    }
 }
 
 } // namespace VideoCore

@@ -395,6 +395,8 @@ private:
 
     void GarbageCollectImages();
     void GarbageCollectSamplers();
+    /// Drains images whose deferred GPU work retired (see DeleteImage).
+    void FlushPendingDeletes();
 
 private:
     const Vulkan::Instance& instance;
@@ -453,6 +455,10 @@ private:
     std::atomic<u64> registry_generation{0};
     std::mutex samplers_mutex;
     std::mutex download_images_mutex;
+    /// bbport: DeleteImage callbacks run on scheduler threads; the GPU thread drains the ids
+    /// under `mutex` (guest threads may be inside FindImage).
+    std::mutex delete_mutex;
+    std::vector<ImageId> pending_deletes;
     struct MetaDataInfo {
         MetaType type;
         s32 clear_mask = -1;

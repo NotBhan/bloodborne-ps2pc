@@ -36,6 +36,20 @@ extern std::atomic<u32> g_bb_compiles;
 
 namespace Libraries::VideoOut {
 
+constexpr static bool IsValidPixelFormat(PixelFormat format) {
+    switch (format) {
+    case PixelFormat::A8R8G8B8Srgb:
+    case PixelFormat::A8B8G8R8Srgb:
+    case PixelFormat::A2R10G10B10:
+    case PixelFormat::A2R10G10B10Srgb:
+    case PixelFormat::A2R10G10B10Bt2020Pq:
+    case PixelFormat::A16R16G16B16Float:
+        return true;
+    default:
+        return false;
+    }
+}
+
 constexpr static bool Is32BppPixelFormat(PixelFormat format) {
     switch (format) {
     case PixelFormat::A8R8G8B8Srgb:
@@ -201,6 +215,11 @@ int VideoOutDriver::RegisterBuffers(VideoOutPort* port, s32 startIndex, void* co
                   static_cast<u32>(attribute->tiling_mode));
         return ORBIS_VIDEO_OUT_ERROR_INVALID_TILING_MODE;
     }
+    if (!IsValidPixelFormat(attribute->pixel_format)) {
+        LOG_ERROR(Lib_VideoOut, "Invalid pixelFormat = {:#x}",
+                  static_cast<u32>(attribute->pixel_format));
+        return ORBIS_VIDEO_OUT_ERROR_INVALID_PIXEL_FORMAT;
+    }
 
     LOG_INFO(Lib_VideoOut,
              "startIndex = {}, bufferNum = {}, pixelFormat = {}, aspectRatio = {}, "
@@ -276,6 +295,11 @@ int VideoOutDriver::ChangeBufferAttribute(VideoOutPort* port, s32 attributeIndex
         LOG_ERROR(Lib_VideoOut, "Invalid tilingMode = {}",
                   static_cast<u32>(attribute->tiling_mode));
         return ORBIS_VIDEO_OUT_ERROR_INVALID_TILING_MODE;
+    }
+    if (!IsValidPixelFormat(attribute->pixel_format)) {
+        LOG_ERROR(Lib_VideoOut, "Invalid pixelFormat = {:#x}",
+                  static_cast<u32>(attribute->pixel_format));
+        return ORBIS_VIDEO_OUT_ERROR_INVALID_PIXEL_FORMAT;
     }
 
     LOG_INFO(Lib_VideoOut,
@@ -539,6 +563,14 @@ bool VideoOutDriver::SubmitFlip(VideoOutPort* port, s32 index, s64 flip_arg,
                                 bool is_eop /*= false*/) {
     {
         std::unique_lock lock{port->port_mutex};
+        if (index < -1 || index >= static_cast<s32>(MaxDisplayBuffers)) {
+            LOG_ERROR(Lib_VideoOut, "Invalid flip buffer index {}", index);
+            return false;
+        }
+        if (index != -1 && port->buffer_slots[index].group_index < 0) {
+            LOG_ERROR(Lib_VideoOut, "Flip buffer index {} is not registered", index);
+            return false;
+        }
         if (index != -1 && port->flip_status.flip_pending_num > 16) {
             LOG_ERROR(Lib_VideoOut, "Flip queue is full");
             return false;
@@ -567,7 +599,19 @@ void VideoOutDriver::SubmitFlipInternal(VideoOutPort* port, s32 index, s64 flip_
         frame = presenter->PrepareBlankFrame(false);
     } else {
         const auto& buffer = port->buffer_slots[index];
-        ASSERT_MSG(buffer.group_index >= 0, "Trying to flip an unregistered buffer!");
+        // Registration may change between SubmitFlip's check and this queued call. Dropping the
+        // flip is recoverable; aborting the whole game is not.
+        if (buffer.group_index < 0) {
+            LOG_ERROR(Lib_VideoOut, "Trying to flip unregistered buffer index {}", index);
+            std::scoped_lock lock{port->port_mutex};
+            if (port->flip_status.flip_pending_num > 0) {
+                --port->flip_status.flip_pending_num;
+            }
+            if (is_eop && port->flip_status.gc_queue_num > 0) {
+                --port->flip_status.gc_queue_num;
+            }
+            return;
+        }
         const auto& group = port->groups[buffer.group_index];
         frame = presenter->PrepareFrame(group, buffer.address_left);
     }

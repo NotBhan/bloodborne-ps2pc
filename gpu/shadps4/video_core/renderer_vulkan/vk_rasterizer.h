@@ -343,16 +343,22 @@ private:
     using RenderTargetInfo = std::pair<VideoCore::ImageId, VideoCore::TextureCache::ImageDesc>;
     std::array<RenderTargetInfo, AmdGpu::NUM_COLOR_BUFFERS> cb_descs;
     std::pair<VideoCore::ImageId, VideoCore::TextureCache::ImageDesc> db_desc;
-    boost::container::static_vector<vk::DescriptorImageInfo, Shader::NUM_IMAGES> image_infos;
-    boost::container::static_vector<vk::DescriptorBufferInfo, Shader::NUM_BUFFERS> buffer_infos;
-    boost::container::static_vector<VideoCore::ImageId, Shader::NUM_IMAGES> bound_images;
+    // bbport: the descriptor info vectors accumulate every stage of a pipeline (and every mip
+    // array element). Sizing them by a single stage's NUM_IMAGES/NUM_BUFFERS was tight enough
+    // for a full G-buffer pipeline; an overflow is UB in release static_vector and corrupted the
+    // adjacent members (malformed push-descriptor writes).
+    static constexpr u32 MaxImageDescriptors = Shader::NUM_IMAGES * Shader::MaxStageTypes;
+    static constexpr u32 MaxBufferDescriptors = Shader::NUM_BUFFERS * Shader::MaxStageTypes;
+    boost::container::static_vector<vk::DescriptorImageInfo, MaxImageDescriptors> image_infos;
+    boost::container::static_vector<vk::DescriptorBufferInfo, MaxBufferDescriptors> buffer_infos;
+    boost::container::static_vector<VideoCore::ImageId, MaxImageDescriptors> bound_images;
     struct BoundBuffer {
         const VideoCore::Buffer* buffer;
         u64 offset;
         u32 size;
         bool is_written;
     };
-    boost::container::static_vector<BoundBuffer, Shader::NUM_BUFFERS> bound_buffers;
+    boost::container::static_vector<BoundBuffer, MaxBufferDescriptors> bound_buffers;
 
     u32 set_write_index{};
     Pipeline::DescriptorWrites set_writes;
@@ -381,8 +387,8 @@ private:
     std::array<ImageDescCacheEntry, 4096> image_desc_cache{};
     u64 desc_use_counter = 0;
     /// Entries replacing pinned cache slots during one BindTextures call.
-    boost::container::static_vector<ImageDescCacheEntry, Shader::NUM_IMAGES> image_desc_overflow;
-    boost::container::static_vector<VideoCore::TextureCache::ImageDesc, Shader::NUM_IMAGES * 2>
+    boost::container::static_vector<ImageDescCacheEntry, MaxImageDescriptors> image_desc_overflow;
+    boost::container::static_vector<VideoCore::TextureCache::ImageDesc, MaxImageDescriptors * 2>
         image_desc_storage;
     u64 bind_epoch = 0;
     // bbport: render/depth target lookups memoized by their raw register bytes while image

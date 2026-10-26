@@ -77,9 +77,12 @@ protected:
     Scheduler& scheduler;
     DescriptorHeap& desc_heap;
     const Shader::Profile& profile;
-    vk::UniquePipeline pipeline;
-    vk::UniquePipelineLayout pipeline_layout;
+    // Destroyed in reverse order: the pipeline, then the layout that keeps the descriptor set
+    // layout alive, then the descriptor set layout itself. RADV's pipeline layout references its
+    // set layouts; destroying them first is not a valid order.
     vk::UniqueDescriptorSetLayout desc_layout;
+    vk::UniquePipelineLayout pipeline_layout;
+    vk::UniquePipeline pipeline;
     std::array<const Shader::Info*, Shader::MaxStageTypes> stages{};
     bool uses_push_descriptors{};
     bool is_compute;

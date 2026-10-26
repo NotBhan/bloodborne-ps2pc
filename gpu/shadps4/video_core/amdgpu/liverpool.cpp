@@ -286,7 +286,10 @@ void RunEventWriteEop(Vulkan::Rasterizer& rasterizer, const u8* data) {
 
 void RunDmaData(Vulkan::Rasterizer& rasterizer, const u8* data) {
     const auto* dma_data = reinterpret_cast<const PM4DmaData*>(data);
-    ASSERT(dma_data->command.das == 0);
+    if (dma_data->command.das != 0) {
+        LOG_ERROR(Render, "Unsupported DmaData das={} (skipped)", dma_data->command.das);
+        return;
+    }
     if (dma_data->src_sel == DmaDataSrc::Data && dma_data->dst_sel == DmaDataDst::Gds) {
         rasterizer.FillBuffer(dma_data->dst_addr_lo, dma_data->NumBytes(),
                                dma_data->data, true);
@@ -313,8 +316,8 @@ void RunDmaData(Vulkan::Rasterizer& rasterizer, const u8* data) {
                                dma_data->SrcAddress<VAddr>(), dma_data->NumBytes(),
                                false, false);
     } else {
-        UNREACHABLE_MSG("WriteData src_sel = {}, dst_sel = {}", u32(dma_data->src_sel),
-                        u32(dma_data->dst_sel));
+        LOG_ERROR(Render, "Unsupported DmaData src_sel = {}, dst_sel = {} (skipped)",
+                  u32(dma_data->src_sel), u32(dma_data->dst_sel));
     }
 }
 
@@ -350,10 +353,13 @@ void RunEventWriteEos(Vulkan::Rasterizer& rasterizer, const u8* data) {
         }
     });
     if (event_eos.command == PM4CmdEventWriteEos::Command::GdsStore) {
-        ASSERT(event_eos.size == 1);
-        rasterizer.Finish();
-        const u32 value = rasterizer.ReadDataFromGds(event_eos.gds_index);
-        *event_eos.Address() = value;
+        if (event_eos.size != 1) {
+            LOG_ERROR(Render, "EOS GDS store with size {} (skipped)", event_eos.size.Value());
+        } else {
+            rasterizer.Finish();
+            const u32 value = rasterizer.ReadDataFromGds(event_eos.gds_index);
+            *event_eos.Address() = value;
+        }
     }
 }
 } // namespace
@@ -410,8 +416,10 @@ Liverpool::Task Liverpool::ProcessCeUpdate(std::span<const u32> ccb) {
         const auto* header = reinterpret_cast<const PM4Header*>(ccb.data());
         const u32 type = header->type;
         if (type != 3) {
-            // No other types of packets were spotted so far
-            UNREACHABLE_MSG("Invalid PM4 type {}", type);
+            // No other types of packets were spotted so far. A non-type-3 header cannot be
+            // sized reliably; drop the rest of this constant buffer instead of aborting.
+            LOG_ERROR(Render, "Invalid PM4 type {} in constant buffer (rest dropped)", type);
+            break;
         }
 
         const PM4ItOpcode opcode = header->type3.opcode;
@@ -461,9 +469,12 @@ Liverpool::Task Liverpool::ProcessCeUpdate(std::span<const u32> ccb) {
             break;
         }
         default:
-            const u32 count = header->type3.NumWords();
-            UNREACHABLE_MSG("Unknown PM4 type 3 opcode {:#x} with count {}",
-                            static_cast<u32>(opcode), count);
+            // bbport: an opcode this build does not model used to abort the whole game. Skip the
+            // packet (its size is known) and keep the stream going; a missing state change is
+            // recoverable, a SIGILL is not.
+            LOG_ERROR(Render, "Unknown PM4 type 3 opcode {:#x} with count {} (skipped)",
+                      static_cast<u32>(opcode), header->type3.NumWords());
+            break;
         }
         ccb = NextPacket(ccb, header->type3.NumWords() + 1);
     }
@@ -708,7 +719,10 @@ void ScanDcb(std::span<const u32> dcb, int depth) {
 } // namespace
 
 Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<const u32> ccb,
-                                           u64 seq) {
+                                           u64 seq,
+                                           std::shared_ptr<CommandBufferCopy> keepalive) {
+    // The snapshot (when enabled) lives in the coroutine frame: dcb/ccb point into it.
+    (void)keepalive;
     FIBER_ENTER(dcb_task_name);
     // Top-level buffers enqueued for the draw preparation workers (nested IBs are not).
     Vulkan::DrawPreparation* draw_prep =
@@ -908,7 +922,12 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
 
                 if (set_data->reg_offset >= 0x200 &&
                     set_data->reg_offset <= (0x200 + sizeof(ComputeProgram) / 4)) {
-                    ASSERT(set_size <= sizeof(ComputeProgram));
+                    const u32 program_offset = (set_data->reg_offset - 0x200) * sizeof(u32);
+                    if (set_size > sizeof(ComputeProgram) - program_offset) {
+                        LOG_ERROR(Render, "Oversized SetShReg packet ({} bytes at {:#x}); skipped",
+                                  set_size, set_data->reg_offset.Value());
+                        break;
+                    }
                     auto* addr = reinterpret_cast<u32*>(&mapped_queues[GfxQueueId].cs_state) +
                                  (set_data->reg_offset - 0x200);
                     std::memcpy(addr, header + 2, set_size);
@@ -1115,7 +1134,11 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
             }
             case PM4ItOpcode::SetBase: {
                 const auto* set_base = reinterpret_cast<const PM4CmdSetBase*>(header);
-                ASSERT(set_base->base_index == PM4CmdSetBase::BaseIndex::DrawIndexIndirPatchTable);
+                if (set_base->base_index != PM4CmdSetBase::BaseIndex::DrawIndexIndirPatchTable) {
+                    LOG_ERROR(Render, "SetBase with unexpected base index {} (skipped)",
+                              u32(set_base->base_index.Value()));
+                    break;
+                }
                 indirect_args_addr = set_base->Address<u64>();
                 break;
             }
@@ -1182,21 +1205,25 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
             }
             case PM4ItOpcode::WriteData: {
                 const auto* write_data = reinterpret_cast<const PM4CmdWriteData*>(header);
-                ASSERT(write_data->dst_sel.Value() == 2 || write_data->dst_sel.Value() == 5);
-                ASSERT(!write_data->wr_one_addr.Value());
+                if ((write_data->dst_sel.Value() != 2 && write_data->dst_sel.Value() != 5) ||
+                    write_data->wr_one_addr.Value() || count < 2) {
+                    LOG_ERROR(Render, "Unsupported graphics WriteData (dst_sel={}, one_addr={}, "
+                                      "count={}); skipped",
+                              write_data->dst_sel.Value(), write_data->wr_one_addr.Value(), count);
+                    break;
+                }
+                const u32 data_size = (count - 2) * sizeof(u32);
                 if (rasterizer) {
                     // In order with the draws (on the draw recording thread when in use).
-                    BbWriteLog::NoteIntent(write_data->Address<u64>(), write_data->data,
-                                           (count - 2) * sizeof(u32),
+                    BbWriteLog::NoteIntent(write_data->Address<u64>(), write_data->data, data_size,
                                            BbWriteLog::WriteDataIntent);
                     if (rasterizer->RunInOrder(&RunWriteData, header, (count + 1) * sizeof(u32),
                                                BbToggle::PipelinedMemoryWrites)) {
-                        NotePendingWrite(*write_data, (count - 2) * sizeof(u32));
-                        rasterizer->NotePendingGpuWrite(write_data->Address<VAddr>(),
-                                                        (count - 2) * sizeof(u32));
+                        NotePendingWrite(*write_data, data_size);
+                        rasterizer->NotePendingGpuWrite(write_data->Address<VAddr>(), data_size);
                     }
                 } else {
-                    std::memcpy(write_data->Address<u64*>(), write_data->data, (count - 2) * 4);
+                    std::memcpy(write_data->Address<u64*>(), write_data->data, data_size);
                 }
                 break;
             }
@@ -1328,8 +1355,10 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break;
             }
             default:
-                UNREACHABLE_MSG("Unknown PM4 type 3 opcode {:#x} with count {}",
-                                static_cast<u32>(opcode), count);
+                // bbport: never abort on a guest opcode; the packet length is known.
+                LOG_ERROR(Render, "Unknown PM4 type 3 opcode {:#x} with count {} (skipped)",
+                          static_cast<u32>(opcode), header->type3.NumWords());
+                break;
             }
             dcb = NextPacket(dcb, header->type3.NumWords() + 1);
             break;
@@ -1421,8 +1450,11 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
         }
 
         if (header->type != 3) {
-            // No other types of packets were spotted so far
-            UNREACHABLE_MSG("Invalid PM4 type {}", header->type.Value());
+            // bbport: a non-type-3 header in a compute ring cannot be sized reliably; log and
+            // drop the rest of this submission instead of aborting.
+            LOG_ERROR(Render, "Invalid PM4 type {} in compute queue (rest dropped)",
+                      header->type.Value());
+            break;
         }
 
         const PM4ItOpcode opcode = header->type3.opcode;
@@ -1450,7 +1482,11 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
             if (dma_data->dst_addr_lo == 0x3022C || !rasterizer) {
                 break;
             }
-            ASSERT(dma_data->command.das == 0);
+            if (dma_data->command.das != 0) {
+                LOG_ERROR(Render, "Unsupported compute DmaData das={} (skipped)",
+                          dma_data->command.das);
+                break;
+            }
             if (dma_data->src_sel == DmaDataSrc::Data && dma_data->dst_sel == DmaDataDst::Gds) {
                 rasterizer->FillBuffer(dma_data->dst_addr_lo, dma_data->NumBytes(), dma_data->data,
                                        true);
@@ -1486,8 +1522,8 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
                     rasterizer->CopyBuffer(dst_addr, src_addr, num_bytes, false, false);
                 }
             } else {
-                UNREACHABLE_MSG("WriteData src_sel = {}, dst_sel = {}", u32(dma_data->src_sel),
-                                u32(dma_data->dst_sel));
+                LOG_ERROR(Render, "Unsupported compute WriteData src_sel = {}, dst_sel = {} (skipped)",
+                          u32(dma_data->src_sel), u32(dma_data->dst_sel));
             }
             break;
         }
@@ -1510,13 +1546,25 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
 
             if (set_data->reg_offset >= 0x200 &&
                 set_data->reg_offset <= (0x200 + sizeof(ComputeProgram) / 4)) {
-                ASSERT(set_size <= sizeof(ComputeProgram));
+                const u32 program_offset = (set_data->reg_offset - 0x200) * sizeof(u32);
+                if (set_size > sizeof(ComputeProgram) - program_offset) {
+                    LOG_ERROR(Render, "Oversized compute SetShReg packet ({} bytes at {:#x}); "
+                                      "skipped",
+                              set_size, set_data->reg_offset.Value());
+                    break;
+                }
                 auto* addr = reinterpret_cast<u32*>(&mapped_queues[vqid + 1].cs_state) +
                              (set_data->reg_offset - 0x200);
                 std::memcpy(addr, header + 2, set_size);
             } else {
-                std::memcpy(&regs.reg_array[Regs::ShRegWordOffset + set_data->reg_offset],
-                            header + 2, set_size);
+                const u32 dst = Regs::ShRegWordOffset + set_data->reg_offset;
+                if (dst > Regs::NumRegs || set_size / sizeof(u32) > Regs::NumRegs - dst) {
+                    LOG_ERROR(Render, "Out-of-range compute SetShReg offset {:#x} size {}; "
+                                      "skipped",
+                              set_data->reg_offset.Value(), set_size);
+                    break;
+                }
+                std::memcpy(&regs.reg_array[dst], header + 2, set_size);
                 // bbport: interleaves with the graphics stream at an unpredictable point, so
                 // draw-preparation workers cannot reproduce it: make their checksums differ.
                 gfx_reg_checksum = HashRegisterPacket(gfx_reg_checksum ^ 0xA5C0A5C0A5C0ull,
@@ -1584,12 +1632,15 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
                 rasterizer->WaitDeferredSignals();
             }
             const auto* write_data = reinterpret_cast<const PM4CmdWriteData*>(header);
-            ASSERT(write_data->dst_sel.Value() == 2 || write_data->dst_sel.Value() == 5);
             const u32 data_size = (header->type3.count.Value() - 2) * 4;
-            if (!write_data->wr_one_addr.Value()) {
+            if ((write_data->dst_sel.Value() == 2 || write_data->dst_sel.Value() == 5) &&
+                !write_data->wr_one_addr.Value() && header->type3.count.Value() >= 2) {
                 std::memcpy(write_data->Address<void*>(), write_data->data, data_size);
             } else {
-                UNREACHABLE();
+                LOG_ERROR(Render, "Unsupported graphics WriteData form (dst_sel={}, one_addr={}, "
+                                  "count={}); skipped",
+                          write_data->dst_sel.Value(), write_data->wr_one_addr.Value(),
+                          header->type3.count.Value());
             }
             break;
         }
@@ -1642,8 +1693,10 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
             break;
         }
         default:
-            UNREACHABLE_MSG("Unknown PM4 type 3 opcode {:#x} with count {}",
-                            static_cast<u32>(opcode), header->type3.NumWords());
+            // bbport: skip an unknown compute opcode instead of terminating the process.
+            LOG_ERROR(Render, "Unknown PM4 type 3 opcode {:#x} with count {} (skipped)",
+                      static_cast<u32>(opcode), header->type3.NumWords());
+            break;
         }
 
         acb = NextPacket(acb, next_dw_off);
@@ -1657,44 +1710,26 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
     FIBER_EXIT;
 }
 
-Liverpool::CmdBuffer Liverpool::CopyCmdBuffers(std::span<const u32> dcb, std::span<const u32> ccb) {
-    auto& queue = mapped_queues[GfxQueueId];
-    ASSERT_MSG(queue.dcb_buffer.capacity() >= queue.dcb_buffer_offset + dcb.size(),
-               "dcb copy buffer out of reserved space");
-    ASSERT_MSG(queue.ccb_buffer.capacity() >= queue.ccb_buffer_offset + ccb.size(),
-               "ccb copy buffer out of reserved space");
-
-    queue.dcb_buffer.resize(
-        std::max(queue.dcb_buffer.size(), queue.dcb_buffer_offset + dcb.size()));
-    queue.ccb_buffer.resize(
-        std::max(queue.ccb_buffer.size(), queue.ccb_buffer_offset + ccb.size()));
-
-    const u32 prev_dcb_buffer_offset = queue.dcb_buffer_offset;
-    const u32 prev_ccb_buffer_offset = queue.ccb_buffer_offset;
-    if (!dcb.empty()) {
-        std::memcpy(queue.dcb_buffer.data() + queue.dcb_buffer_offset, dcb.data(),
-                    dcb.size_bytes());
-        queue.dcb_buffer_offset += dcb.size();
-        dcb = std::span<const u32>{queue.dcb_buffer.begin() + prev_dcb_buffer_offset,
-                                   queue.dcb_buffer.begin() + queue.dcb_buffer_offset};
-    }
-
-    if (!ccb.empty()) {
-        std::memcpy(queue.ccb_buffer.data() + queue.ccb_buffer_offset, ccb.data(),
-                    ccb.size_bytes());
-        queue.ccb_buffer_offset += ccb.size();
-        ccb = std::span<const u32>{queue.ccb_buffer.begin() + prev_ccb_buffer_offset,
-                                   queue.ccb_buffer.begin() + queue.ccb_buffer_offset};
-    }
-
-    return std::make_pair(dcb, ccb);
-}
-
 void Liverpool::SubmitGfx(std::span<const u32> dcb, std::span<const u32> ccb) {
     auto& queue = mapped_queues[GfxQueueId];
 
+    // bbport: the guest reuses a command buffer as soon as the submit call returns (the PS4
+    // driver snapshots it), while this thread decodes it later. Decoding live memory then read
+    // the next frame's commands or freed heap data: PM4 headers from reused buffers, and EOP
+    // labels written into objects the guest had already freed (guest fault 0x263b8e7).
+    std::shared_ptr<CommandBufferCopy> keepalive;
     if (EmulatorSettings.IsCopyGpuBuffers()) {
-        std::tie(dcb, ccb) = CopyCmdBuffers(dcb, ccb);
+        keepalive = std::make_shared<CommandBufferCopy>();
+        keepalive->words.reserve(dcb.size() + ccb.size());
+        keepalive->words.assign(dcb.begin(), dcb.end());
+        const size_t dcb_words = keepalive->words.size();
+        keepalive->words.insert(keepalive->words.end(), ccb.begin(), ccb.end());
+        if (dcb_words != 0) {
+            dcb = std::span<const u32>{keepalive->words.data(), dcb_words};
+        }
+        if (!ccb.empty()) {
+            ccb = std::span<const u32>{keepalive->words.data() + dcb_words, ccb.size()};
+        }
     }
 
     // The copy for the draw preparation workers is made before taking the queue lock, which
@@ -1709,7 +1744,7 @@ void Liverpool::SubmitGfx(std::span<const u32> dcb, std::span<const u32> ccb) {
             seq = gfx_submit_seq++;
             draw_prep->Enqueue(seq, std::move(prep_submission));
         }
-        auto task = ProcessGraphics(dcb, ccb, seq);
+        auto task = ProcessGraphics(dcb, ccb, seq, std::move(keepalive));
         queue.submits.emplace(task.handle);
     }
 

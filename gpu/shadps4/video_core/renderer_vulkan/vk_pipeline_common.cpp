@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
+#include <atomic>
 #include <span>
 
 #include <boost/container/small_vector.hpp>
@@ -32,6 +34,75 @@ Pipeline::~Pipeline() {
 
 void Pipeline::BindResources(DescriptorWrites& set_writes,
                              const Shader::PushData& push_data) const {
+    // bbport: a default-constructed write (descriptorCount 0, type SAMPLER, pImageInfo null)
+    // reached vkCmdPushDescriptorSetKHR and made RADV dereference null (host SIGSEGV on
+    // bb:VkRecorder after an area load). Empty writes are dropped; a write whose type needs an
+    // info pointer but has none gets a null descriptor instead. Both are reported.
+    const auto is_image_type = [](vk::DescriptorType type) {
+        return type == vk::DescriptorType::eSampler ||
+               type == vk::DescriptorType::eCombinedImageSampler ||
+               type == vk::DescriptorType::eSampledImage ||
+               type == vk::DescriptorType::eStorageImage ||
+               type == vk::DescriptorType::eInputAttachment;
+    };
+    const auto is_buffer_type = [](vk::DescriptorType type) {
+        return type == vk::DescriptorType::eUniformBuffer ||
+               type == vk::DescriptorType::eStorageBuffer ||
+               type == vk::DescriptorType::eUniformBufferDynamic ||
+               type == vk::DescriptorType::eStorageBufferDynamic;
+    };
+    u32 null_infos = 0;
+    u32 first_bad_index = ~0u;
+    u32 first_bad_binding = 0;
+    u32 first_bad_count = 0;
+    u32 first_bad_type = 0;
+    static const vk::DescriptorImageInfo null_image{
+        VK_NULL_HANDLE, VK_NULL_HANDLE, vk::ImageLayout::eGeneral};
+    static const vk::DescriptorBufferInfo null_buffer{VK_NULL_HANDLE, 0, VK_WHOLE_SIZE};
+    for (u32 i = 0; i < set_writes.size(); ++i) {
+        auto& write = set_writes[i];
+        if (write.descriptorCount == 0) {
+            continue;
+        }
+        const bool bad_image = is_image_type(write.descriptorType) && !write.pImageInfo;
+        const bool bad_buffer = is_buffer_type(write.descriptorType) && !write.pBufferInfo;
+        const bool bad_texel = (write.descriptorType == vk::DescriptorType::eUniformTexelBuffer ||
+                                write.descriptorType == vk::DescriptorType::eStorageTexelBuffer) &&
+                               !write.pTexelBufferView;
+        if (!bad_image && !bad_buffer && !bad_texel) {
+            continue;
+        }
+        if (first_bad_index == ~0u) {
+            first_bad_index = i;
+            first_bad_binding = write.dstBinding;
+            first_bad_count = write.descriptorCount;
+            first_bad_type = static_cast<u32>(write.descriptorType);
+        }
+        if (bad_image) {
+            write.pImageInfo = &null_image;
+            write.descriptorCount = 1;
+        } else if (bad_buffer) {
+            write.pBufferInfo = &null_buffer;
+            write.descriptorCount = 1;
+        } else {
+            write.descriptorCount = 0;
+        }
+        ++null_infos;
+    }
+    const auto empty_writes = std::erase_if(set_writes, [](const vk::WriteDescriptorSet& write) {
+        return write.descriptorCount == 0;
+    });
+    if (empty_writes != 0 || null_infos != 0) {
+        static std::atomic<u32> reported{0};
+        if (reported.fetch_add(1, std::memory_order_relaxed) < 16) {
+            LOG_WARNING(Render_Vulkan,
+                        "Descriptor set for {}: dropped {} empty writes, replaced {} null infos; "
+                        "first write {} binding {} type {} count {}",
+                        GetDebugString(), empty_writes, null_infos, first_bad_index,
+                        first_bad_binding, first_bad_type, first_bad_count);
+        }
+    }
+
     const auto bind_point =
         IsCompute() ? vk::PipelineBindPoint::eCompute : vk::PipelineBindPoint::eGraphics;
     const auto stage_flags = IsCompute() ? vk::ShaderStageFlagBits::eCompute : AllGraphicsStageBits;

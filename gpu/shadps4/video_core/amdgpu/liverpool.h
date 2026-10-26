@@ -9,6 +9,7 @@
 #include <deque>
 #include <coroutine>
 #include <exception>
+#include <memory>
 #include <mutex>
 #include <semaphore>
 #include <span>
@@ -101,8 +102,6 @@ public:
 
     void SubmitDone() noexcept {
         std::scoped_lock lk{submit_mutex};
-        mapped_queues[GfxQueueId].ccb_buffer_offset = 0;
-        mapped_queues[GfxQueueId].dcb_buffer_offset = 0;
         submit_done = true;
         submit_cv.notify_one();
     }
@@ -150,14 +149,6 @@ public:
             ++num_commands;
             submit_cv.notify_one();
         }
-    }
-
-    void ReserveCopyBufferSpace() {
-        GpuQueue& gfx_queue = mapped_queues[GfxQueueId];
-        std::scoped_lock lk(gfx_queue.m_access);
-        constexpr size_t GfxReservedSize = 2_MB >> 2;
-        gfx_queue.ccb_buffer.reserve(GfxReservedSize);
-        gfx_queue.dcb_buffer.reserve(GfxReservedSize);
     }
 
     inline ComputeProgram& GetCsRegs() {
@@ -218,9 +209,13 @@ private:
         Handle handle;
     };
 
-    using CmdBuffer = std::pair<std::span<const u32>, std::span<const u32>>;
-    CmdBuffer CopyCmdBuffers(std::span<const u32> dcb, std::span<const u32> ccb);
-    Task ProcessGraphics(std::span<const u32> dcb, std::span<const u32> ccb, u64 seq = NoSeq);
+    /// bbport: the command buffers of one submission, snapshotted at submit time. The guest may
+    /// reuse its buffers as soon as the submit call returns; the GPU thread decodes later.
+    struct CommandBufferCopy {
+        std::vector<u32> words;
+    };
+    Task ProcessGraphics(std::span<const u32> dcb, std::span<const u32> ccb, u64 seq = NoSeq,
+                         std::shared_ptr<CommandBufferCopy> keepalive = {});
     Task ProcessCeUpdate(std::span<const u32> ccb);
     template <bool is_indirect = false>
     Task ProcessCompute(std::span<const u32> acb, u32 vqid);
@@ -230,10 +225,6 @@ private:
 
     struct GpuQueue {
         std::mutex m_access{};
-        std::atomic<u32> dcb_buffer_offset;
-        std::atomic<u32> ccb_buffer_offset;
-        std::vector<u32> dcb_buffer;
-        std::vector<u32> ccb_buffer;
         std::queue<Task::Handle> submits{};
         ComputeProgram cs_state{};
     };

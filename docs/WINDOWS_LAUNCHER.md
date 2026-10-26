@@ -11,10 +11,10 @@ full-width category list that opens one category at a time. The Windows backend,
 keys, executable, packaging toolchain, and Windows process model remain compatible with the
 existing Windows build.
 
-## Release 1.10.11
+## Release 1.10.12
 
-Download [bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.11/bbport-windows.zip)
-from the [release page](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.11).
+Download [bbport-windows.zip](https://github.com/NotBhan/bloodborne-ps2pc/releases/download/v1.10.12/bbport-windows.zip)
+from the [release page](https://github.com/NotBhan/bloodborne-ps2pc/releases/tag/v1.10.12).
 This build adds Low/Medium/High/Ultra graphics presets, keeps the imported `keys.json` in
 `%APPDATA%\bbport-launcher` and copies it into the active saves folder, and checks this fork's
 releases with one-click installation under **Settings → Launcher → Updates**. The 1.10.10

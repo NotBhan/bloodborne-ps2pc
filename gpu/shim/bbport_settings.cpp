@@ -421,7 +421,11 @@ void SetFullscreen(bool on) {
     const auto part = file.string() + ".part";
     {
         std::ofstream out(part, std::ios::trunc);
-        out << root.dump(2);
+        try {
+            out << root.dump(2);
+        } catch (const std::exception&) {
+            return; // invalid UTF-8 in the launcher's file, or allocation failure
+        }
         if (!out) return;
     }
     std::error_code error;
