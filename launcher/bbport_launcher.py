@@ -94,7 +94,7 @@ def trophy_keys_path():
 
 
 MAX_LOG_LINES = 5000
-VERSION = "1.10.11"
+VERSION = "1.10.12"
 REPO_URL = "https://github.com/NotBhan/bloodborne-ps2pc"
 ISSUES_URL = f"{REPO_URL}/issues"
 RELEASES_API = "https://api.github.com/repos/NotBhan/bloodborne-ps2pc/releases/latest"

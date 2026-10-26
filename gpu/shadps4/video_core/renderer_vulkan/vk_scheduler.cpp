@@ -182,6 +182,10 @@ std::unique_ptr<RecordChunk> Scheduler::AcquireChunk() {
 
 void Scheduler::SignalAfterHostCopies(std::function<void()> signal) {
     if (!IsRecordingDeferred()) {
+        // bbport: this signal is written immediately. Earlier signals deferred to the recorder
+        // must be written first, or the guest can observe a later fence and free memory the
+        // earlier one still writes into (guest heap corruption).
+        WaitDeferredSignals();
         WaitHostCopies();
         signal();
         return;

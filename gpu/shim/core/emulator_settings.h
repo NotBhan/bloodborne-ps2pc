@@ -63,7 +63,11 @@ public:
         }();
         return value;
     }
-    bool IsCopyGpuBuffers() { static const auto value = Flag("BB_COPY_GPU_BUFFERS", false); return value; }
+    // bbport: on by default. The game reuses a DCB/CCB as soon as the submit call returns, while
+    // this port decodes it on the GPU thread later; decoding the live buffer executed rewritten
+    // commands and wrote into freed guest objects. BB_COPY_GPU_BUFFERS=0 restores the old
+    // behaviour (A/B only: it is not safe with a lagging command thread).
+    bool IsCopyGpuBuffers() { static const auto value = Flag("BB_COPY_GPU_BUFFERS", true); return value; }
     bool IsDirectMemoryAccessEnabled() { static const auto value = Flag("BB_DIRECT_MEMORY_ACCESS", false); return value; }
     bool IsDumpShaders() { static const auto value = Flag("BB_DUMP_SHADERS", false); return value; }
     bool IsFsrEnabled() { static const auto value = Flag("BB_FSR1", false); return value; }

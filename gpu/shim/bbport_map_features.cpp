@@ -2,6 +2,7 @@
 #include "bbport_map_features.h"
 #include <SDL3/SDL.h>
 #include <cstdlib>
+#include <cstdio>
 #include <cmath>
 #include <fstream>
 #include <unordered_map>
@@ -18,6 +19,11 @@ std::string npc_mode="all",categories,error;
 uint64_t last_poll=0;
 uintptr_t player=0;
 bool env(const char* key){const char* v=std::getenv(key);return v&&std::string(v)=="1";}
+bool reported=false;
+void Fail(const std::exception& e,const char* where) {
+    error=std::string("Map feature data (")+where+"): "+e.what();
+    if(!reported){reported=true;std::fprintf(stderr,"Map features: %s\n",error.c_str());}
+}
 int flag(unsigned id){auto i=flags.find(id);if(i!=flags.end())return i->second;return flags.emplace(id,valid?runtime_atlas_flag(id):-1).first->second;}
 bool requirements(const Json& rule) {
     for(const auto& id:rule.value("available_on",Json::array()))if(!id.is_number_unsigned()&&!id.is_number_integer())return false;else if(flag(id.get<unsigned>())!=1)return false;
@@ -113,39 +119,59 @@ bool FogEnabled(){return fog;}
 const std::string& Error(){return error;}
 bool Revealed(const std::string& area,float x,float y,float z) {
     if(!fog)return true;
-    auto it=areas.find(area);if(it==areas.end())return false;
-    if(it->value("always_visible",false))return true;
-    for(const auto& rule:it->value("reveal_regions",Json::array()))if(inside(rule,x,y,z)) {
-        if(!requirements(rule))return false;
-        if(rule.contains("reveal_when")&&evaluate(rule["reveal_when"])!=1)return false;
-        for(const auto& id:rule.value("boss_flags",Json::array()))if(flag(id.get<unsigned>())!=1)return false;
+    try {
+        auto it=areas.find(area);if(it==areas.end())return false;
+        if(it->value("always_visible",false))return true;
+        for(const auto& rule:it->value("reveal_regions",Json::array()))if(inside(rule,x,y,z)) {
+            if(!requirements(rule))return false;
+            if(rule.contains("reveal_when")&&evaluate(rule["reveal_when"])!=1)return false;
+            for(const auto& id:rule.value("boss_flags",Json::array()))if(flag(id.get<unsigned>())!=1)return false;
+            return true;
+        }
+        return false;
+    } catch(const std::exception& e) {
+        // Hand-authored features.json can be structurally valid but contain a wrong type deep in
+        // a rule; this runs per map triangle and used to escape into the present thread.
+        Fail(e,"reveal");
+        fog=false;
         return true;
     }
-    return false;
 }
 bool NpcVisible(const std::string& area,int entity) {
     if(npc_mode=="hidden")return false;
     if(npc_mode=="all")return true;
-    auto a=areas.find(area);if(a==areas.end()||!a->contains("npc_rules"))return false;
-    auto r=(*a)["npc_rules"].find(std::to_string(entity));
-    return r!=(*a)["npc_rules"].end()&&evaluate(*r)==1;
+    try {
+        auto a=areas.find(area);if(a==areas.end()||!a->contains("npc_rules"))return false;
+        auto r=(*a)["npc_rules"].find(std::to_string(entity));
+        return r!=(*a)["npc_rules"].end()&&evaluate(*r)==1;
+    } catch(const std::exception& e) {
+        Fail(e,"npc");
+        npc_mode="all";
+        return true;
+    }
 }
 std::vector<Pickup> Pickups(const std::string& area) {
     std::vector<Pickup> result;if(!items||!valid)return result;
-    auto a=areas.find(area);if(a==areas.end())return result;
-    for(const auto& pickup:a->value("pickups",Json::array())) {
-        if(!requirements(pickup))continue;
-        const auto& p=pickup.at("pos");if(p.size()!=3)continue;
-        if(!Revealed(area,p[0],p[1],p[2]))continue;
-        Pickup out;out.x=p[0];out.y=p[1];out.z=p[2];
-        for(const auto& item:pickup.at("contents")) {
-            const std::string category=item.at("category");
-            if(!ItemCategoryEnabled(category.c_str())||flag(item.at("collected_flag").get<unsigned>())!=0)continue;
-            if(out.category.empty())out.category=category;
-            if(!out.label.empty())out.label+='\n';
-            out.label+=item.at("name").get<std::string>()+" x"+std::to_string(item.at("quantity").get<int>());
+    try {
+        auto a=areas.find(area);if(a==areas.end())return result;
+        for(const auto& pickup:a->value("pickups",Json::array())) {
+            if(!requirements(pickup))continue;
+            const auto& p=pickup.at("pos");if(p.size()!=3)continue;
+            if(!Revealed(area,p[0],p[1],p[2]))continue;
+            Pickup out;out.x=p[0];out.y=p[1];out.z=p[2];
+            for(const auto& item:pickup.at("contents")) {
+                const std::string category=item.at("category");
+                if(!ItemCategoryEnabled(category.c_str())||flag(item.at("collected_flag").get<unsigned>())!=0)continue;
+                if(out.category.empty())out.category=category;
+                if(!out.label.empty())out.label+='\n';
+                out.label+=item.at("name").get<std::string>()+" x"+std::to_string(item.at("quantity").get<int>());
+            }
+            if(!out.category.empty())result.push_back(std::move(out));
         }
-        if(!out.category.empty())result.push_back(std::move(out));
+    } catch(const std::exception& e) {
+        Fail(e,"pickups");
+        items=false;
+        result.clear();
     }
     return result;
 }

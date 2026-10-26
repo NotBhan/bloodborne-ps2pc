@@ -410,7 +410,7 @@ const GraphicsPipeline* PipelineCache::TryPreparedPipeline(const PreparedDraw& p
         }
     }
     const auto it = graphics_pipelines.find(prepared.key);
-    if (it == graphics_pipelines.end()) {
+    if (it == graphics_pipelines.end() || !it->second) {
         return nullptr;
     }
     Touch(*it->second);
@@ -461,6 +461,10 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
         }
         sel.fetch_shader.reset();
     }
+    // A failed creation leaves an empty entry: skip the draw instead of dereferencing null.
+    if (!it->second) {
+        return nullptr;
+    }
     Touch(*it->second);
     return it->second.get();
 }
@@ -491,6 +495,9 @@ const ComputePipeline* PipelineCache::GetComputePipeline() {
             auto& m = sel.modules[0];
             module_related_pipelines[m].emplace_back(compute_key);
         }
+    }
+    if (!it->second) {
+        return nullptr;
     }
     Touch(*it->second);
     return it->second.get();
@@ -1012,13 +1019,13 @@ void PipelineCache::CollectUnusedPipelines(int minutes) {
     std::vector<GraphicsPipelineKey> dead_graphics;
     std::vector<ComputePipelineKey> dead_compute;
     for (const auto& [key, pipeline] : graphics_pipelines) {
-        if (pipeline->last_used_epoch < cutoff) {
+        if (pipeline && pipeline->last_used_epoch < cutoff) {
             last_tick = std::max(last_tick, pipeline->last_used_tick);
             dead_graphics.push_back(key);
         }
     }
     for (const auto& [key, pipeline] : compute_pipelines) {
-        if (pipeline->last_used_epoch < cutoff) {
+        if (pipeline && pipeline->last_used_epoch < cutoff) {
             last_tick = std::max(last_tick, pipeline->last_used_tick);
             dead_compute.push_back(key);
         }

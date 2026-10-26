@@ -5,6 +5,23 @@ Windows releases of this fork, newest first. Each is on the
 `bbport-windows.zip`; the same releases carry the Linux bundle.
 Planned work is in [ROADMAP.md](ROADMAP.md).
 
+## 1.10.12 (2026-10-26)
+
+- **Command buffers are snapshotted at submit time.** The game may reuse a DCB/CCB as soon as
+  `sceGnmSubmit*` returns; decoding the live buffer later executed rewritten commands and let
+  stale EOP labels land in freed guest objects. This is the `Guest fault 0x263b8e7` heap
+  corruption and the `PM4 header ... rest of the buffer dropped` warnings after area loads.
+- **Push-descriptor crash fix.** Empty or partially filled `VkWriteDescriptorSet` entries no
+  longer reach `vkCmdPushDescriptorSetKHR` (a RADV SIGSEGV on `bb:VkRecorder`). Writes are
+  validated and given safe null descriptors, and pipeline objects are destroyed in the valid
+  Vulkan order (pipeline, pipeline layout, descriptor set layout).
+- **Crash audit fixes:** failed pipeline creations no longer leave null entries that crash the
+  next draw; the 10-minute pipeline collector runs on the GPU command thread instead of racing
+  it; inline fences wait for earlier deferred signals; texture-cache evictions no longer erase
+  slots under a live `FindImage`; descriptor info storage covers every pipeline stage and mip
+  array; guest-triggerable VideoOut/GNM/PM4 asserts now log and return or skip; map and settings
+  JSON errors are caught instead of escaping the present thread.
+
 ## 1.10.11 (2026-10-24)
 
 - **Graphics presets in Settings:** **Settings → Graphics → Graphics presets** has Low, Medium,

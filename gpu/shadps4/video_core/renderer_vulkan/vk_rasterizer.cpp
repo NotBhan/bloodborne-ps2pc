@@ -919,6 +919,18 @@ void Rasterizer::Draw(bool is_indexed, u32 index_offset, const PreparedDraw* pre
     RENDERER_TRACE;
     BbStats::draws.fetch_add(1, std::memory_order_relaxed);
 
+    // bbport: age the pipeline cache on this thread (stage A), which is also the only thread that
+    // selects/touches pipelines. It used to run from NoteFrameStart on the draw recording thread,
+    // racing graphics_pipelines/compute_pipelines against GetGraphicsPipeline and Touch.
+    if (camera_motion->Enabled() && Regs().color_buffers[0] &&
+        FrameCapture::IsDisplayBuffer(Regs().color_buffers[0].Address())) {
+        pipeline_cache.Tick();
+        static u64 display_passes = 0;
+        if (BbStats::enabled && (++display_passes % 600) == 0) {
+            pipeline_cache.ReportCache();
+        }
+    }
+
     // bbport: with the draw pipeline this thread only selects the pipeline and hands the draw
     // to the recording thread (DrawRecord there); draws FilterDraw handles itself run here.
     const bool pipelined = UseDrawPipe();
@@ -3666,13 +3678,8 @@ void Rasterizer::NoteFrameStart() {
         profiler->BeginFrame();
     }
     const u64 frame = BbStats::gpu_frames.fetch_add(1, std::memory_order_relaxed) + 1;
-    // Age the compiled pipelines; once per BB_PIPELINE_GC_MINUTES (default 10) the cache
-    // releases those no draw returned during the previous interval.
-    pipeline_cache.Tick();
-    // BB_FRAME_STATS=1: every 600 frames, whether the compiled-object cache is still growing.
-    if (BbStats::enabled && (frame % 600) == 0) {
-        pipeline_cache.ReportCache();
-    }
+    // bbport: the pipeline cache is aged on the GPU command thread (Rasterizer::Draw). It used to
+    // be done here on the draw recording thread, racing the pipeline maps against stage A.
     // BB_BUFFER_STATS=1: how many earlier frames the GPU has not finished when the GPU thread
     // starts a frame — the lag that decides whether guest memory can be read in place.
     static const bool stats = [] {

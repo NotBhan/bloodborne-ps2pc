@@ -156,13 +156,25 @@ s32 PS4_SYSV_ABI sceVideoOutRegisterBuffers(s32 handle, s32 startIndex, void* co
 
 s32 PS4_SYSV_ABI sceVideoOutSetFlipRate(s32 handle, s32 rate) {
     LOG_TRACE(Lib_VideoOut, "called");
-    driver->GetPort(handle)->flip_rate = rate;
+    auto* port = driver->GetPort(handle);
+    if (!port) {
+        return ORBIS_VIDEO_OUT_ERROR_INVALID_HANDLE;
+    }
+    // The presenter computes `flip_rate + 1`; -1 divided by zero on the present thread.
+    if (rate < 0) {
+        LOG_ERROR(Lib_VideoOut, "Invalid flip rate {}", rate);
+        return ORBIS_VIDEO_OUT_ERROR_INVALID_VALUE;
+    }
+    port->flip_rate = rate;
     return ORBIS_OK;
 }
 
 s32 PS4_SYSV_ABI sceVideoOutIsFlipPending(s32 handle) {
     LOG_TRACE(Lib_VideoOut, "called");
     auto* port = driver->GetPort(handle);
+    if (!port) {
+        return ORBIS_VIDEO_OUT_ERROR_INVALID_HANDLE;
+    }
     std::unique_lock lock{port->port_mutex};
     s32 pending = port->flip_status.flip_pending_num;
     return pending;
@@ -365,6 +377,15 @@ s32 sceVideoOutSubmitEopFlip(s32 handle, u32 buf_id, u32 mode, s64 flip_arg, voi
     if (!port) {
         return ORBIS_VIDEO_OUT_ERROR_INVALID_HANDLE;
     }
+    // The gnm flip path does not validate the index before it reaches buffer_labels/buffer_slots.
+    if (buf_id >= MaxDisplayBuffers) {
+        LOG_ERROR(Lib_VideoOut, "Invalid EOP flip buffer index {}", buf_id);
+        return ORBIS_VIDEO_OUT_ERROR_INVALID_INDEX;
+    }
+    if (port->buffer_slots[buf_id].group_index < 0) {
+        LOG_ERROR(Lib_VideoOut, "EOP flip slot {} is not registered", buf_id);
+        return ORBIS_VIDEO_OUT_ERROR_INVALID_INDEX;
+    }
 
     Platform::IrqC::Instance()->RegisterOnce(
         Platform::InterruptId::GfxFlip, [=](Platform::InterruptId irq) {
@@ -390,8 +411,14 @@ s32 sceVideoOutSubmitEopFlip(s32 handle, u32 buf_id, u32 mode, s64 flip_arg, voi
                     }
                 }
             }
-            const auto result = driver->SubmitFlip(port, buf_id, flip_arg, true);
-            ASSERT_MSG(result, "EOP flip submission failed");
+            // bbport: a full flip queue must not abort the game (common during a shader-compile
+            // or present stall); drop this flip and let the guest continue.
+            if (!driver->SubmitFlip(port, buf_id, flip_arg, true)) {
+                static std::atomic<u32> reported{0};
+                if (reported.fetch_add(1, std::memory_order_relaxed) < 5) {
+                    LOG_ERROR(Lib_VideoOut, "Dropping EOP flip for buffer {}: queue is full", buf_id);
+                }
+            }
         });
 
     return ORBIS_OK;

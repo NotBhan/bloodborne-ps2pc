@@ -884,13 +884,22 @@ void ImageToolsTab() {
 
 std::filesystem::path ModConfigPath() {
     if (const char* value = std::getenv("BB_MODS_CONFIG"); value && *value) return value;
-    return std::filesystem::current_path() / "mods.json";
+    std::error_code ec;
+    const auto cwd = std::filesystem::current_path(ec);
+    return ec ? std::filesystem::path{} : cwd / "mods.json";
 }
 
 std::optional<std::string> XboxPromptFolder() {
     const char* configured = std::getenv("BB_MODS_DIR");
-    const auto root = configured && *configured ? std::filesystem::path(configured) :
-                      std::filesystem::current_path() / "mods";
+    std::filesystem::path root;
+    if (configured && *configured) {
+        root = configured;
+    } else {
+        std::error_code ec;
+        root = std::filesystem::current_path(ec);
+        if (ec) return std::nullopt;
+        root /= "mods";
+    }
     std::error_code ec;
     if (!std::filesystem::is_directory(root, ec)) return std::nullopt;
     for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
@@ -940,7 +949,11 @@ bool SetPromptEnabled(const std::string& folder, bool enabled) {
     profile["disabled"] = std::move(next);
     std::ofstream file(ModConfigPath(), std::ios::trunc);
     if (!file) return false;
-    file << profile.dump(2) << '\n';
+    try {
+        file << profile.dump(2) << '\n';
+    } catch (const std::exception&) {
+        return false; // invalid UTF-8 or allocation failure, not a crash
+    }
     return bool(file);
 }
 
